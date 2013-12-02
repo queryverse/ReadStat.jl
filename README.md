@@ -1,8 +1,10 @@
 DataRead.jl: Read files from Stata, SPSS, and SAS
 --
 
-The DataRead Julia module uses libreadstat to parse binary and transport files
-from Stata, SPSS and SAS. All functions return a DataFrame.
+The DataRead Julia module uses
+[ReadStat](https://github.com/WizardMac/ReadStat) to parse binary and transport
+files from Stata, SPSS and SAS. All functions return a
+[DataFrame](https://github.com/JuliaStats/DataFrames.jl).
 
 To use the module, you first need to ensure that libreadstat.dylib is in
 Julia's load path.
