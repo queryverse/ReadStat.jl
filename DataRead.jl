@@ -1,5 +1,6 @@
 module DataRead
 
+using DataArrays
 using DataFrames
 
 export read_dta, read_sav, read_por, read_sas7bdat
