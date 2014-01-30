@@ -21,14 +21,19 @@ const READSTAT_ERROR_PARSE      = 5
 type DataReadCtx
     nrows::Int
     colnames::Vector{String}
-    columns::Vector{Vector{Any}}
+    columns::Vector{DataVector{Any}}
 end
 
 function handle_info(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{Void})
+    nrows = convert(Int, obs_count)
+    ncols = convert(Int, var_count)
+    colnames = Array(String, (ncols,))
+    columns = Array(DataVector{Any}, (ncols,))
+
     ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
-    ctx.nrows = convert(Int, obs_count)
-    ctx.colnames = Array(String, (convert(Int, var_count),))
-    ctx.columns = Array(Vector{Any}, (convert(Int, var_count),))
+    ctx.nrows = nrows
+    ctx.colnames = colnames
+    ctx.columns = columns
 
     return convert(Cint, 0)
 end
@@ -54,7 +59,16 @@ function handle_variable(index::Cint, name::Ptr{Int8}, format::Ptr{Int8}, label:
     elseif data_type == READSTAT_TYPE_DOUBLE
         jtype = Float64
     end
-    ctx.columns[index+1] = Array(jtype, (ctx.nrows,))
+    value_array = DataArray(jtype, (ctx.nrows,))
+    if jtype == String
+        for i in 1:ctx.nrows
+            value_array[i] = ""
+        end
+    end
+    for i in 1:ctx.nrows
+        value_array[i] = NA
+    end
+    ctx.columns[index+1] = value_array
 
     return convert(Cint, 0)
 end
@@ -95,7 +109,7 @@ function handle_value_label(val_labels::Ptr{Int8}, value::Ptr{Void}, data_type::
 end
 
 function read_data_file(filename::String, func::Symbol)
-    ctx = DataReadCtx(0, Array(String, (0,)), Array(Vector{Any}, (0,)))
+    ctx = DataReadCtx(0, Array(String, (0,)), Array(DataVector{Any}, (0,)))
 
     info_fxn = cfunction(handle_info, Cint, (Cint, Cint, Ptr{Void}))
     var_fxn = cfunction(handle_variable, Cint, 
@@ -126,7 +140,7 @@ function read_data_file(filename::String, func::Symbol)
     end
 
     if retval == 0
-        dict = Dict{String,Vector{Any}}()
+        dict = Dict{String,DataVector{Any}}()
         for i in 1:length(ctx.colnames)
             dict[ctx.colnames[i]] = ctx.columns[i]
         end
