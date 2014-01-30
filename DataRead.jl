@@ -21,14 +21,14 @@ const READSTAT_ERROR_PARSE      = 5
 type DataReadCtx
     nrows::Int
     colnames::Vector{String}
-    columns::Vector{DataVector{Any}}
+    columns::Vector{DataArray{Any}}
 end
 
 function handle_info(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{Void})
     nrows = convert(Int, obs_count)
     ncols = convert(Int, var_count)
     colnames = Array(String, (ncols,))
-    columns = Array(DataVector{Any}, (ncols,))
+    columns = Array(DataArray{Any}, (ncols,))
 
     ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
     ctx.nrows = nrows
@@ -109,7 +109,7 @@ function handle_value_label(val_labels::Ptr{Int8}, value::Ptr{Void}, data_type::
 end
 
 function read_data_file(filename::String, func::Symbol)
-    ctx = DataReadCtx(0, Array(String, (0,)), Array(DataVector{Any}, (0,)))
+    ctx = DataReadCtx(0, Array(String, (0,)), Array(DataArray{Any}, (0,)))
 
     info_fxn = cfunction(handle_info, Cint, (Cint, Cint, Ptr{Void}))
     var_fxn = cfunction(handle_variable, Cint, 
@@ -140,7 +140,7 @@ function read_data_file(filename::String, func::Symbol)
     end
 
     if retval == 0
-        dict = Dict{String,DataVector{Any}}()
+        dict = Dict{String,DataArray{Any}}()
         for i in 1:length(ctx.colnames)
             dict[ctx.colnames[i]] = ctx.columns[i]
         end
