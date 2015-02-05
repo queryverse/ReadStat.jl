@@ -113,23 +113,32 @@ function read_data_file(filename::String, func::Symbol)
 
     retval = 0
 
+    parser = ccall( (:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
+    ccall( (:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
+    ccall( (:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
+    ccall( (:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
+    ccall( (:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
+
+
     if func == :parse_dta
-        retval = ccall( (:parse_dta, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-            bytestring(filename), pointer_from_objref(ctx), info_fxn, var_fxn, val_fxn, label_fxn)
+        retval = ccall( (:readstat_parse_dta, "libreadstat"), Int, 
+            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
+            parser, bytestring(filename), pointer_from_objref(ctx))
     elseif func == :parse_sav
-        retval = ccall( (:parse_sav, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-            bytestring(filename), pointer_from_objref(ctx), info_fxn, var_fxn, val_fxn, label_fxn)
+        retval = ccall( (:readstat_parse_sav, "libreadstat"), Int, 
+            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
+            parser, bytestring(filename), pointer_from_objref(ctx))
     elseif func == :parse_por
-        retval = ccall( (:parse_por, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-            bytestring(filename), pointer_from_objref(ctx), info_fxn, var_fxn, val_fxn, label_fxn)
+        retval = ccall( (:readstat_parse_por, "libreadstat"), Int, 
+            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
+            parser, bytestring(filename), pointer_from_objref(ctx))
     elseif func == :parse_sas7bdat
-        retval = ccall( (:parse_sas7bdat, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}, Ptr{Void}, Ptr{Void}),
-            bytestring(filename), pointer_from_objref(ctx), info_fxn, var_fxn, val_fxn)
+        retval = ccall( (:readstat_parse_sas7bdat, "libreadstat"), Int, 
+            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
+            parser, bytestring(filename), pointer_from_objref(ctx))
     end
+
+    ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void}), parser)
 
     if retval == 0
         return DataFrame(ctx.columns, ctx.colnames)
