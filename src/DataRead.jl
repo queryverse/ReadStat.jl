@@ -40,7 +40,7 @@ function handle_info(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{Void})
 end
 
 function handle_variable(index::Cint, name::Ptr{Int8}, format::Ptr{Int8}, label::Ptr{Int8},
-    value_labels::Ptr{Int8}, data_type::Cint, max_len::Csize_t, ctx_ptr::Ptr{Void})
+    value_labels::Ptr{Int8}, data_type::Cint, ctx_ptr::Ptr{Void})
 
     ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
     name_str = bytestring(name)
@@ -100,7 +100,7 @@ function handle_value_label(val_labels::Ptr{Int8}, value::Ptr{Void}, data_type::
     return convert(Cint, 0)
 end
 
-function read_data_file(filename::String, func::Symbol)
+function read_data_file(filename::String, filetype::Symbol)
     ctx = DataReadCtx(0, Array(Symbol, (0,)), Array(Any, (0,)))
 
     info_fxn = cfunction(handle_info, Cint, (Cint, Cint, Ptr{Void}))
@@ -119,20 +119,19 @@ function read_data_file(filename::String, func::Symbol)
     ccall( (:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
     ccall( (:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
 
-
-    if func == :parse_dta
+    if filetype == :dta
         retval = ccall( (:readstat_parse_dta, "libreadstat"), Int, 
             (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
             parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif func == :parse_sav
+    elseif filetype == :sav
         retval = ccall( (:readstat_parse_sav, "libreadstat"), Int, 
             (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
             parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif func == :parse_por
+    elseif filetype == :por
         retval = ccall( (:readstat_parse_por, "libreadstat"), Int, 
             (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
             parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif func == :parse_sas7bdat
+    elseif filetype == :sas7bdat
         retval = ccall( (:readstat_parse_sas7bdat, "libreadstat"), Int, 
             (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
             parser, bytestring(filename), pointer_from_objref(ctx))
@@ -148,19 +147,19 @@ function read_data_file(filename::String, func::Symbol)
 end
 
 function read_dta(filename::String)
-    return read_data_file(filename, :parse_dta)
+    return read_data_file(filename, :dta)
 end
 
 function read_por(filename::String)
-    return read_data_file(filename, :parse_por)
+    return read_data_file(filename, :por)
 end
 
 function read_sav(filename::String)
-    return read_data_file(filename, :parse_sav)
+    return read_data_file(filename, :sav)
 end
 
 function read_sas7bdat(filename::String)
-    return read_data_file(filename, :parse_sas7bdat)
+    return read_data_file(filename, :sas7bdat)
 end
 
 end #module DataRead
