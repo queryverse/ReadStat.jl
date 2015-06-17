@@ -137,7 +137,7 @@ function read_data_file(filename::String, filetype::Symbol)
             parser, bytestring(filename), pointer_from_objref(ctx))
     end
 
-    ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void}), parser)
+    ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
 
     if retval == 0
         return DataFrame(ctx.columns, ctx.colnames)
