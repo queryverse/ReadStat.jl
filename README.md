@@ -7,16 +7,18 @@ files from Stata, SPSS and SAS. All functions return a
 [DataFrame](https://github.com/JuliaStats/DataFrames.jl).
 
 To use the module, you first need to ensure that libreadstat.dylib is in
-Julia's load path.
+Julia's load path. You can compile it from [ReadStat](https://github.com/WizardMac/ReadStat)
 
 Usage:
 
-    using DataRead
+```julia
+using DataRead
 
-    read_dta("/path/to/something.dta")
+read_dta("/path/to/something.dta")
 
-    read_por("/path/to/something.por")
+read_por("/path/to/something.por")
 
-    read_sav("/path/to/something.sav")
+read_sav("/path/to/something.sav")
 
-    read_sas7bdat("/path/to/something.sas7bdat")
+read_sas7bdat("/path/to/something.sas7bdat")
+```
