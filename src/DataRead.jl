@@ -1,9 +1,16 @@
 module DataRead
 
 using DataArrays
-using DataFrames
+import DataFrames: DataFrame
 
 export read_dta, read_sav, read_por, read_sas7bdat
+
+
+##############################################################################
+##
+## Julia types that mirror C types
+##
+##############################################################################
 
 const READSTAT_TYPE_STRING      = 0
 const READSTAT_TYPE_CHAR        = 1
@@ -19,19 +26,79 @@ const READSTAT_ERROR_MALLOC     = 3
 const READSTAT_ERROR_USER_ABORT = 4
 const READSTAT_ERROR_PARSE      = 5
 
+immutable DataReadValue
+    v::Cdouble
+    readstat_types_t::Cint
+    is_system_missing::Cint  
+    is_considered_missing::Cint       
+end
+
+function get_type(value::DataReadValue)
+    ccall((:readstat_value_type, "libreadstat"), Cint, (DataReadValue,), value)
+end
+function get_ismissing(value::DataReadValue)
+    ccall((:readstat_value_is_missing, "libreadstat"), Cint, (DataReadValue,), value)
+end
+
+
+immutable DataReadMissingness
+    missing_ranges::DataReadValue
+    missing_ranges_count::Clong
+end
+
+immutable DataReadVariable
+    readstat_types_t::Cint
+    index::Cint
+    name::Ptr{UInt8}
+    format::Ptr{UInt8}
+    label::Ptr{UInt8}
+    label_set::Ptr{Void}
+    offset::Coff_t
+    width::Csize_t
+    user_width::Csize_t
+    missingness::DataReadMissingness 
+end
+
+function get_name(variable::Ptr{DataReadVariable})
+    name = ccall((:readstat_variable_get_name, "libreadstat"), Ptr{UInt8}, (Ptr{DataReadVariable},), variable)
+    return bytestring(name)
+end
+
+function get_type(variable::Ptr{DataReadVariable})
+    ccall((:readstat_variable_get_type, "libreadstat"), Cint, (Ptr{DataReadVariable},), variable)
+end
+
+
+##############################################################################
+##
+## Pure Julia type
+##
+## Note: ctx.colnames[index+1] is not type stable
+## Performance wise, use something like in https://github.com/quinnj/CSV.jl
+##
+##############################################################################
+
 type DataReadCtx
     nrows::Int
     colnames::Vector{Symbol}
     columns::Vector{Any}
 end
+DataReadCtx() = DataReadCtx(0, Array(Symbol, (0,)), Array(Any, (0,)))
+DataFrame(ctx::DataReadCtx) = DataFrame(ctx.columns, ctx.colnames)
 
-function handle_info(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{Void})
+##############################################################################
+##
+## Pure Julia functions
+##
+##############################################################################
+
+function handle_info!(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{DataReadCtx})
     nrows = convert(Int, obs_count)
     ncols = convert(Int, var_count)
     colnames = Array(Symbol, (ncols,))
     columns = Array(Any, (ncols,))
 
-    ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
+    ctx = unsafe_pointer_to_objref(ctx_ptr)
     ctx.nrows = nrows
     ctx.colnames = colnames
     ctx.columns = columns
@@ -39,16 +106,17 @@ function handle_info(obs_count::Cint, var_count::Cint, ctx_ptr::Ptr{Void})
     return convert(Cint, 0)
 end
 
-function handle_variable(index::Cint, name::Ptr{Int8}, format::Ptr{Int8}, label::Ptr{Int8},
-    value_labels::Ptr{Int8}, data_type::Cint, ctx_ptr::Ptr{Void})
+function handle_variable!(index::Cint, variable::Ptr{DataReadVariable}, variable_label::Cstring,  ctx_ptr::Ptr{DataReadCtx})
+
+    name_str = get_name(variable)
+    data_type = get_type(variable)
 
     ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
-    name_str = bytestring(name)
     ctx.colnames[index+1] = convert(Symbol, name_str)
 
     jtype = Float64
     if data_type == READSTAT_TYPE_STRING
-        jtype = String
+        jtype = ASCIIString
     elseif data_type == READSTAT_TYPE_CHAR
         jtype = Int8
     elseif data_type == READSTAT_TYPE_INT16
@@ -61,105 +129,95 @@ function handle_variable(index::Cint, name::Ptr{Int8}, format::Ptr{Int8}, label:
         jtype = Float64
     end
     ctx.columns[index+1] = DataArray(jtype, (ctx.nrows,))
-
     return convert(Cint, 0)
 end
 
-function handle_value(obs_index::Cint, var_index::Cint, value::Ptr{Void}, data_type::Cint, ctx_ptr::Ptr{Void})
-    ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
+function handle_value!(obs_index::Cint, var_index::Cint, value::DataReadValue, ctx_ptr::Ptr{DataReadCtx})
+ 
     jvalue = NA
-    if value != convert(Ptr{Void}, 0)
+    data_type = get_type(value)
+    vmissing = get_ismissing(value)
+    # starts to goes wrong here
+    @show data_type
+    @show vmissing
+    @show value
+    @show reinterpret(Float64, value.v)
+
+    # this produces segault
+    #  unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
+    if vmissing != 0
         if data_type == READSTAT_TYPE_STRING
-            jvalue = bytestring(convert(Ptr{Int8}, value))
+            jvalue = reinterpret(Ptr{UInt8}, value.v)
         elseif data_type == READSTAT_TYPE_CHAR
-            jvalue = pointer_to_array(convert(Ptr{Int8}, value), (1,))[1]
+            jvalue = reinterpret(UInt8, value.v)
         elseif data_type == READSTAT_TYPE_INT16
-            jvalue = pointer_to_array(convert(Ptr{Int16}, value), (1,))[1]
+            jvalue = reinterpret(Int16, value.v)
         elseif data_type == READSTAT_TYPE_INT32
-            jvalue = pointer_to_array(convert(Ptr{Int32}, value), (1,))[1]
+            jvalue = reinterpret(Int32, value.v)
         elseif data_type == READSTAT_TYPE_FLOAT
-            jvalue = pointer_to_array(convert(Ptr{Float32}, value), (1,))[1]
-            if isnan(jvalue)
-                jvalue = NA
-            end
+            jvalue = reinterpret(Float32, value.v)
         elseif data_type == READSTAT_TYPE_DOUBLE
-            jvalue = pointer_to_array(convert(Ptr{Float64}, value), (1,))[1]
-            if isnan(jvalue)
-                jvalue = NA
-            end
+            jvalue =  reinterpret(Float64, value.v)
         end
     end
-    ctx.columns[var_index+1][obs_index+1] = jvalue
-
     return convert(Cint, 0)
 end
 
-function handle_value_label(val_labels::Ptr{Int8}, value::Ptr{Void}, data_type::Cint, label::Ptr{Int8}, ctx_ptr::Ptr{Void})
-    ctx = unsafe_pointer_to_objref(ctx_ptr)::DataReadCtx
-
+function handle_value_label!(val_labels::Cstring, value::DataReadValue, label::Cstring, ctx_ptr::Ptr{DataReadCtx})
+    ctx = unsafe_pointer_to_objref(ctx_ptr)
     return convert(Cint, 0)
 end
 
-function read_data_file(filename::String, filetype::Symbol)
-    ctx = DataReadCtx(0, Array(Symbol, (0,)), Array(Any, (0,)))
+function read_data_file(filename::ASCIIString, filetype::Type)
+    # initialize ctx
+    ctx = DataReadCtx()
+    # initialize parser
+    parser = Parser()
+    # parse
+    parse_data_file!(ctx, parser, filename, filetype)
+    # return dataframe
+    return DataFrame(ctx)
+end
 
-    info_fxn = cfunction(handle_info, Cint, (Cint, Cint, Ptr{Void}))
-    var_fxn = cfunction(handle_variable, Cint, 
-        (Cint, Ptr{Int8}, Ptr{Int8}, Ptr{Int8}, Ptr{Int8}, Cint, Csize_t, Ptr{Void}))
-    val_fxn = cfunction(handle_value, Cint,
-        (Cint, Cint, Ptr{Void}, Cint, Ptr{Void}))
-    label_fxn = cfunction(handle_value_label, Cint,
-        (Ptr{Int8}, Ptr{Void}, Cint, Ptr{Int8}, Ptr{Void}))
+for f in (:dta, :sav, :por, :sas7bdat) 
+    valtype = Val{f}
+    # define read_dta that calls read(.., val{:dta}))
+    @eval $(symbol(:read_, f))(filename::ASCIIString) = read_data_file(filename, $valtype)
+end
 
-    retval = 0
+##############################################################################
+##
+## Link to C functions
+##
+##############################################################################
 
+function Parser()
     parser = ccall( (:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
+    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{DataReadCtx}))
+    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{DataReadVariable}, Cstring,  Ptr{DataReadCtx}))
+    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, DataReadValue, Ptr{DataReadCtx}))
+    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, DataReadValue, Cstring, Ptr{DataReadCtx}))
     ccall( (:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
     ccall( (:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
     ccall( (:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
     ccall( (:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
+    return parser
+end  
 
-    if filetype == :dta
-        retval = ccall( (:readstat_parse_dta, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
-            parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif filetype == :sav
-        retval = ccall( (:readstat_parse_sav, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
-            parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif filetype == :por
-        retval = ccall( (:readstat_parse_por, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
-            parser, bytestring(filename), pointer_from_objref(ctx))
-    elseif filetype == :sas7bdat
-        retval = ccall( (:readstat_parse_sas7bdat, "libreadstat"), Int, 
-            (Ptr{Int8}, Ptr{Void}, Ptr{Void}),
-            parser, bytestring(filename), pointer_from_objref(ctx))
-    end
-
-    ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
-
-    if retval == 0
-        return DataFrame(ctx.columns, ctx.colnames)
-    else
-        error("Error parsing $filename: $retval")
+for f in (:dta, :sav, :por, :sas7bdat) 
+    valtype = Val{f}
+    # call respective parser
+    @eval begin
+        function parse_data_file!(ctx::DataReadCtx, parser, 
+            filename::ASCIIString, filetype::Type{$valtype})
+            retval = ccall(($(string(:readstat_parse_, f)), "libreadstat"), 
+                        Int, (Ptr{Void}, Ptr{UInt8}, Ptr{DataReadCtx}),
+                        parser, bytestring(filename), pointer_from_objref(ctx))
+            ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
+            retval == 0 ||  error("Error parsing $filename: $retval")
+        end
     end
 end
 
-function read_dta(filename::String)
-    return read_data_file(filename, :dta)
-end
-
-function read_por(filename::String)
-    return read_data_file(filename, :por)
-end
-
-function read_sav(filename::String)
-    return read_data_file(filename, :sav)
-end
-
-function read_sas7bdat(filename::String)
-    return read_data_file(filename, :sas7bdat)
-end
 
 end #module DataRead
