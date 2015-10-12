@@ -32,6 +32,7 @@ immutable DataReadValue
     bits::UInt8
 end
 
+# actually not used
 function get_type(value::DataReadValue)
     ccall((:readstat_value_type, "libreadstat"), Cint, (DataReadValue,), value)
 end
@@ -81,7 +82,7 @@ function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{DataStream})
     ds.schema.cols = convert(Int, var_count)
     ds.schema.header = Array(UTF8String, var_count)
     ds.schema.types = Array(DataType, var_count)
-    return convert(Cint, 0)
+    return Cint(0)
 end
 
 function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable}, 
@@ -109,7 +110,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable},
     end
     ds.schema.types[col] = jtype
     push!(ds.data, NullableArray(jtype, ds.schema.rows))
-    return convert(Cint, 0)
+    return Cint(0)
 end
 
 function handle_value!(obs_index::Cint, var_index::Cint, 
@@ -118,35 +119,33 @@ function handle_value!(obs_index::Cint, var_index::Cint,
     row = obs_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)::DataStream
 
-    vmissing = get_ismissing(value)
-    isnull = convert(Bool, vmissing)
-    # data_type = get_type(value) does not work
-    # so I use type of ds column
-    if isnull
-        readfield!(ds.data[col], ds.schema.types[col], row, col)
+    if get_ismissing(value) == 1
+        readfield!(ds.data[col], row, col)
     else
-        readfield!(ds.data[col], ds.schema.types[col], row, col, value.union)
+        readfield!(ds.data[col], row, col, value.union)
     end
-    return convert(Cint, 0)
+    return Cint(0)
 end
 
-@inline function readfield!(dest::NullableVector{ASCIIString}, ::Type{ASCIIString}, row, col, val)
+function readfield!(dest::NullableVector, row, col)
+    @inbounds dest.values[row] = true
+end
+
+function readfield!(dest::NullableVector{ASCIIString}, row, col, val)
     val = bytestring(reinterpret(Ptr{Int8}, val))
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
-@inline function readfield!{T}(dest::NullableVector{T}, ::Type{T}, row, col, val)
-    # is it the faster way to reinterpret objects with potentially smaller size?
-    val = unsafe_load(convert(Ptr{T}, pointer_from_objref(val)))::T
+function readfield!{T <: Integer}(dest::NullableVector{T}, row, col, val)
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
-function readfield!{T}(dest::NullableVector{T}, ::Type{T}, row, col)
-    @inbounds dest.values[row] = true
+function readfield!{T <: AbstractFloat}(dest::NullableVector{T}, row, col, val)
+    @inbounds dest.values[row], dest.isnull[row] = reinterpret(Float64, val), false
 end
 
 function handle_value_label!(val_labels::Cstring, value::DataReadValue, label::Cstring, ds_ptr::Ptr{DataStream})
-    return convert(Cint, 0)
+    return Cint(0)
 end
 
 function read_data_file(filename::ASCIIString, filetype::Type)
@@ -157,7 +156,7 @@ function read_data_file(filename::ASCIIString, filetype::Type)
     # parse
     parse_data_file!(ds, parser, filename, filetype)
     # return dataframe instead of DataStream
-    return DataFrame(convert(Vector{Any},ds.data),Symbol[symbol(x) for x in ds.schema.header])
+    return DataFrame(convert(Vector{Any},ds.data), Symbol[symbol(x) for x in ds.schema.header])
 end
 
 for f in (:dta, :sav, :por, :sas7bdat) 
