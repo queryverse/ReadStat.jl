@@ -1,8 +1,13 @@
 module DataRead
-using NullableArrays
-using DataStreams
-using DataFrames
 
+##############################################################################
+##
+## Import
+##
+##############################################################################
+
+using NullableArrays
+import DataFrames: DataFrame
 export read_dta, read_sav, read_por, read_sas7bdat
 
 ##############################################################################
@@ -72,28 +77,40 @@ end
 
 ##############################################################################
 ##
-## Pure Julia functions
+## Pure Julia types
 ##
 ##############################################################################
 
-function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{DataStream})
+type DataReadDataFrame
+    data::Vector{Any}
+    header::Vector{Symbol}
+    types::Vector{DataType}
+    rows::Int
+end
+DataReadDataFrame() = DataReadDataFrame(Any[], Symbol[], DataType[], 0)
+DataFrame(ds::DataReadDataFrame) = DataFrame(ds.data, ds.header)
+
+##############################################################################
+##
+## Julia functions
+##
+##############################################################################
+
+function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{DataReadDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
-    ds.schema.rows = convert(Int, obs_count)
-    ds.schema.cols = convert(Int, var_count)
-    ds.schema.header = Array(UTF8String, var_count)
-    ds.schema.types = Array(DataType, var_count)
+    ds.rows = convert(Int, obs_count)
     return Cint(0)
 end
 
 function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable}, 
-                        variable_label::Cstring,  ds_ptr::Ptr{DataStream})
+                        variable_label::Cstring,  ds_ptr::Ptr{DataReadDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::DataStream
+    ds = unsafe_pointer_to_objref(ds_ptr)::DataReadDataFrame
 
     name_str = get_name(variable)
-    data_type = get_type(variable)
-    ds.schema.header[col] = convert(UTF8String, name_str)
+    push!(ds.header, convert(Symbol, name_str))
 
+    data_type = get_type(variable)
     jtype = Float64
     if data_type == READSTAT_TYPE_STRING
         jtype = ASCIIString
@@ -108,27 +125,24 @@ function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable},
     elseif data_type == READSTAT_TYPE_DOUBLE
         jtype = Float64
     end
-    ds.schema.types[col] = jtype
-    push!(ds.data, NullableArray(jtype, ds.schema.rows))
+    push!(ds.types, jtype)
+
+    push!(ds.data, NullableArray(jtype, ds.rows))
+    
     return Cint(0)
 end
 
 function handle_value!(obs_index::Cint, var_index::Cint, 
-                        value::DataReadValue, ds_ptr::Ptr{DataStream})
+                        value::DataReadValue, ds_ptr::Ptr{DataReadDataFrame})
     col = var_index + 1
     row = obs_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::DataStream
+    ds = unsafe_pointer_to_objref(ds_ptr)::DataReadDataFrame
 
-    if get_ismissing(value) == 1
-        readfield!(ds.data[col], row, col)
-    else
+    if get_ismissing(value) == 0
         readfield!(ds.data[col], row, col, value.union)
     end
+    
     return Cint(0)
-end
-
-function readfield!(dest::NullableVector, row, col)
-    @inbounds dest.values[row] = true
 end
 
 function readfield!(dest::NullableVector{ASCIIString}, row, col, val)
@@ -140,47 +154,39 @@ function readfield!{T <: Integer}(dest::NullableVector{T}, row, col, val)
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
-function readfield!{T <: AbstractFloat}(dest::NullableVector{T}, row, col, val)
+function readfield!(dest::NullableVector{Float64}, row, col, val)
     @inbounds dest.values[row], dest.isnull[row] = reinterpret(Float64, val), false
 end
 
-function handle_value_label!(val_labels::Cstring, value::DataReadValue, label::Cstring, ds_ptr::Ptr{DataStream})
+function readfield!(dest::NullableVector{Float32}, row, col, val)
+    @inbounds dest.values[row], dest.isnull[row] =  reinterpret(Float32, val % Int32) , false
+end
+
+function handle_value_label!(val_labels::Cstring, value::DataReadValue, label::Cstring, ds_ptr::Ptr{DataReadDataFrame})
     return Cint(0)
 end
 
-function read_data_file(filename::ASCIIString, filetype::Type)
+function read_data_file(filename::AbstractString, filetype::Type)
     # initialize ds
-    ds = DataStream(Schema(DataType[]))
+    ds = DataReadDataFrame()
     # initialize parser
     parser = Parser()
     # parse
     parse_data_file!(ds, parser, filename, filetype)
-    # return dataframe instead of DataStream
-    return DataFrame(convert(Vector{Any},ds.data), Symbol[symbol(x) for x in ds.schema.header])
+    # return dataframe instead of DataReadDataFrame
+    return DataFrame(convert(Vector{Any},ds.data), Symbol[symbol(x) for x in ds.header])
 end
-
-for f in (:dta, :sav, :por, :sas7bdat) 
-    valtype = Val{f}
-    # define read_dta that calls read(.., val{:dta}))
-    @eval $(symbol(:read_, f))(filename::ASCIIString) = read_data_file(filename, $valtype)
-end
-
-##############################################################################
-##
-## Link to C functions
-##
-##############################################################################
 
 function Parser()
-    parser = ccall( (:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
-    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{DataStream}))
-    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{DataReadVariable}, Cstring,  Ptr{DataStream}))
-    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, DataReadValue, Ptr{DataStream}))
-    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, DataReadValue, Cstring, Ptr{DataStream}))
-    ccall( (:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
-    ccall( (:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
-    ccall( (:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
-    ccall( (:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
+    parser = ccall((:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
+    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{DataReadDataFrame}))
+    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{DataReadVariable}, Cstring,  Ptr{DataReadDataFrame}))
+    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, DataReadValue, Ptr{DataReadDataFrame}))
+    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, DataReadValue, Cstring, Ptr{DataReadDataFrame}))
+    ccall((:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
+    ccall((:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
+    ccall((:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
+    ccall((:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
     return parser
 end  
 
@@ -188,15 +194,21 @@ for f in (:dta, :sav, :por, :sas7bdat)
     valtype = Val{f}
     # call respective parser
     @eval begin
-        function parse_data_file!(ds::DataStream, parser, 
-            filename::ASCIIString, filetype::Type{$valtype})
+        function parse_data_file!(ds::DataReadDataFrame, parser, 
+            filename::AbstractString, filetype::Type{$valtype})
             retval = ccall(($(string(:readstat_parse_, f)), "libreadstat"), 
                         Int, (Ptr{Void}, Ptr{UInt8}, Any),
                         parser, bytestring(filename), ds)
-            ccall( (:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
+            ccall((:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
             retval == 0 ||  error("Error parsing $filename: $retval")
         end
     end
+end
+
+for f in (:dta, :sav, :por, :sas7bdat) 
+    valtype = Val{f}
+    # define read_dta that calls read(.., val{:dta}))
+    @eval $(symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
 end
 
 
