@@ -1,5 +1,11 @@
 module DataRead
 
+if isfile(joinpath(dirname(@__FILE__),"..","deps","deps.jl"))
+    include("../deps/deps.jl")
+else
+    error("DataRead not properly installed. Please run Pkg.build(\"DataRead\")")
+end
+
 ##############################################################################
 ##
 ## Import
@@ -40,10 +46,10 @@ end
 
 # actually not used
 function get_type(value::DataReadValue)
-    ccall((:readstat_value_type, "libreadstat"), Cint, (DataReadValue,), value)
+    ccall((:readstat_value_type, libreadstat), Cint, (DataReadValue,), value)
 end
 function get_ismissing(value::DataReadValue)
-    ccall((:readstat_value_is_missing, "libreadstat"), Cint, (DataReadValue,), value)
+    ccall((:readstat_value_is_missing, libreadstat), Cint, (DataReadValue,), value)
 end
 
 
@@ -68,12 +74,12 @@ immutable DataReadVariable
 end
 
 function get_name(variable::Ptr{DataReadVariable})
-    name = ccall((:readstat_variable_get_name, "libreadstat"), Ptr{UInt8}, (Ptr{DataReadVariable},), variable)
+    name = ccall((:readstat_variable_get_name, libreadstat), Ptr{UInt8}, (Ptr{DataReadVariable},), variable)
     return bytestring(name)
 end
 
 function get_type(variable::Ptr{DataReadVariable})
-    ccall((:readstat_variable_get_type, "libreadstat"), Cint, (Ptr{DataReadVariable},), variable)::Cint
+    ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{DataReadVariable},), variable)::Cint
 end
 
 ##############################################################################
@@ -179,15 +185,15 @@ function read_data_file(filename::AbstractString, filetype::Type)
 end
 
 function Parser()
-    parser = ccall((:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
+    parser = ccall((:readstat_parser_init, libreadstat), Ptr{Void}, ())
     const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{DataReadDataFrame}))
     const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{DataReadVariable}, Cstring,  Ptr{DataReadDataFrame}))
     const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, DataReadValue, Ptr{DataReadDataFrame}))
     const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, DataReadValue, Cstring, Ptr{DataReadDataFrame}))
-    ccall((:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
-    ccall((:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
-    ccall((:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
-    ccall((:readstat_set_value_label_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
+    ccall((:readstat_set_info_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
+    ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
+    ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
+    ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
     return parser
 end  
 
@@ -197,10 +203,10 @@ for f in (:dta, :sav, :por, :sas7bdat)
     @eval begin
         function parse_data_file!(ds::DataReadDataFrame, parser, 
             filename::AbstractString, filetype::Type{$valtype})
-            retval = ccall(($(string(:readstat_parse_, f)), "libreadstat"), 
+            retval = ccall(($(string(:readstat_parse_, f)), libreadstat), 
                         Int, (Ptr{Void}, Ptr{UInt8}, Any),
                         parser, bytestring(filename), ds)
-            ccall((:readstat_parser_free, "libreadstat"), Void, (Ptr{Void},), parser)
+            ccall((:readstat_parser_free, libreadstat), Void, (Ptr{Void},), parser)
             retval == 0 ||  error("Error parsing $filename: $retval")
         end
     end
