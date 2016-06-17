@@ -7,6 +7,7 @@ libreadstat = library_dependency("libreadstat", aliases=["libreadstat-0"])
 provides(Sources, URI("http://github.com/WizardMac/ReadStat/archive/e7ca8b7530023d2b91e1f0dbaf7a86d39034d8b7.tar.gz"),
     libreadstat, os=:Unix, unpacked_dir="ReadStat-e7ca8b7530023d2b91e1f0dbaf7a86d39034d8b7")
 
+prefix = joinpath(BinDeps.depsdir(libreadstat), "usr")
 srcdir = joinpath(BinDeps.depsdir(libreadstat), "src", "ReadStat-e7ca8b7530023d2b91e1f0dbaf7a86d39034d8b7")
 
 provides(SimpleBuild,
@@ -15,8 +16,9 @@ provides(SimpleBuild,
         @build_steps begin
             ChangeDirectory(srcdir)
             `./autogen.sh`
-            `./configure`
+            `./configure --prefix=$prefix`
             `make`
+            `make install`
         end
     end), libreadstat, os=:Unix)
 
