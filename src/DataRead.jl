@@ -34,7 +34,7 @@ immutable DataReadValue
     union::Int64
     readstat_types_t::Cint
     tag::Cchar
-    bits::UInt8
+    bits::Cuint
 end
 
 # actually not used
