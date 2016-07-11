@@ -6,9 +6,6 @@ The DataRead Julia module uses
 files from Stata, SPSS and SAS. All functions return a
 [DataFrame](https://github.com/JuliaStats/DataFrames.jl).
 
-To use the module, you first need to ensure that libreadstat.dylib is in
-Julia's load path. You can compile it from [ReadStat](https://github.com/WizardMac/ReadStat)
-
 Usage:
 
 ```julia
