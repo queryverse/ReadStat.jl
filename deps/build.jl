@@ -2,6 +2,7 @@ using BinDeps
 
 @BinDeps.setup
 
+# The version of ReadStat to use
 readstat_version = "e7ca8b7530023d2b91e1f0dbaf7a86d39034d8b7"
 
 libreadstat = library_dependency("libreadstat", aliases=["libreadstat-0"])
