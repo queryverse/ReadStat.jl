@@ -1,15 +1,15 @@
-DataRead.jl: Read files from Stata, SPSS, and SAS
+ReadStat.jl: Read files from Stata, SPSS, and SAS
 --
 
-The DataRead Julia module uses
-[ReadStat](https://github.com/WizardMac/ReadStat) to parse binary and transport
-files from Stata, SPSS and SAS. All functions return a
+The ReadStat.jl Julia module uses the
+[ReadStat](https://github.com/WizardMac/ReadStat) C library to parse binary and
+transport files from Stata, SPSS and SAS. All functions return a
 [DataFrame](https://github.com/JuliaStats/DataFrames.jl).
 
 Usage:
 
 ```julia
-using DataRead
+using ReadStat
 
 read_dta("/path/to/something.dta")
 
