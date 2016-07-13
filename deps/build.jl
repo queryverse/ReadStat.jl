@@ -3,22 +3,21 @@ using BinDeps
 @BinDeps.setup
 
 # The version of ReadStat to use
-readstat_version = "e7ca8b7530023d2b91e1f0dbaf7a86d39034d8b7"
+readstat_version = "0.1.0"
 
 libreadstat = library_dependency("libreadstat", aliases=["libreadstat-0"])
 
-provides(Sources, URI("http://github.com/WizardMac/ReadStat/archive/$readstat_version.tar.gz"),
-    libreadstat, os=:Unix, unpacked_dir="ReadStat-$readstat_version")
+provides(Sources, URI("https://github.com/WizardMac/ReadStat/releases/download/v$readstat_version/readstat-$readstat_version.tar.gz"),
+    libreadstat, os=:Unix, unpacked_dir="readstat-$readstat_version")
 
 prefix = joinpath(BinDeps.depsdir(libreadstat), "usr")
-srcdir = joinpath(BinDeps.depsdir(libreadstat), "src", "ReadStat-$readstat_version")
+srcdir = joinpath(BinDeps.depsdir(libreadstat), "src", "readstat-$readstat_version")
 
 provides(SimpleBuild,
     (@build_steps begin
         GetSources(libreadstat)
         @build_steps begin
             ChangeDirectory(srcdir)
-            `./autogen.sh`
             `./configure --prefix=$prefix`
             `make`
             `make install`
