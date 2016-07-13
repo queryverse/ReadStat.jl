@@ -1,4 +1,4 @@
-using DataRead
+using ReadStat
 
 tests = ["read_dta.jl"]
 

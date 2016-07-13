@@ -1,4 +1,4 @@
-module DataRead
+module ReadStat
 
 ##############################################################################
 ##
@@ -30,7 +30,7 @@ const READSTAT_ERROR_MALLOC     = Cint(3)
 const READSTAT_ERROR_USER_ABORT = Cint(4)
 const READSTAT_ERROR_PARSE      = Cint(5)
 
-immutable DataReadValue
+immutable ReadStatValue
     union::Int64
     readstat_types_t::Cint
     tag::Cchar
@@ -39,22 +39,22 @@ immutable DataReadValue
 end
 
 # actually not used
-function get_type(value::DataReadValue)
-    ccall((:readstat_value_type, "libreadstat"), Cint, (DataReadValue,), value)
+function get_type(value::ReadStatValue)
+    ccall((:readstat_value_type, "libreadstat"), Cint, (ReadStatValue,), value)
 end
-function get_ismissing(value::DataReadValue)
-    ccall((:readstat_value_is_missing, "libreadstat"), Cint, (DataReadValue,), value)
+function get_ismissing(value::ReadStatValue)
+    ccall((:readstat_value_is_missing, "libreadstat"), Cint, (ReadStatValue,), value)
 end
 
 
-# Define DataReadVariable to dispatch on get_type.
+# Define ReadStatVariable to dispatch on get_type.
 # Define the type while we're at it
-immutable DataReadMissingness
-    missing_ranges::DataReadValue
+immutable ReadStatMissingness
+    missing_ranges::ReadStatValue
     missing_ranges_count::Clong
 end
 
-immutable DataReadVariable
+immutable ReadStatVariable
     readstat_types_t::Cint
     index::Cint
     name::Ptr{UInt8}
@@ -64,16 +64,16 @@ immutable DataReadVariable
     offset::Coff_t
     width::Csize_t
     user_width::Csize_t
-    missingness::DataReadMissingness 
+    missingness::ReadStatMissingness 
 end
 
-function get_name(variable::Ptr{DataReadVariable})
-    name = ccall((:readstat_variable_get_name, "libreadstat"), Ptr{UInt8}, (Ptr{DataReadVariable},), variable)
+function get_name(variable::Ptr{ReadStatVariable})
+    name = ccall((:readstat_variable_get_name, "libreadstat"), Ptr{UInt8}, (Ptr{ReadStatVariable},), variable)
     return bytestring(name)
 end
 
-function get_type(variable::Ptr{DataReadVariable})
-    ccall((:readstat_variable_get_type, "libreadstat"), Cint, (Ptr{DataReadVariable},), variable)::Cint
+function get_type(variable::Ptr{ReadStatVariable})
+    ccall((:readstat_variable_get_type, "libreadstat"), Cint, (Ptr{ReadStatVariable},), variable)::Cint
 end
 
 ##############################################################################
@@ -82,14 +82,14 @@ end
 ##
 ##############################################################################
 
-type DataReadDataFrame
+type ReadStatDataFrame
     data::Vector{Any}
     header::Vector{Symbol}
     types::Vector{DataType}
     rows::Int
 end
-DataReadDataFrame() = DataReadDataFrame(Any[], Symbol[], DataType[], 0)
-DataFrame(ds::DataReadDataFrame) = DataFrame(ds.data, ds.header)
+ReadStatDataFrame() = ReadStatDataFrame(Any[], Symbol[], DataType[], 0)
+DataFrame(ds::ReadStatDataFrame) = DataFrame(ds.data, ds.header)
 
 ##############################################################################
 ##
@@ -97,16 +97,16 @@ DataFrame(ds::DataReadDataFrame) = DataFrame(ds.data, ds.header)
 ##
 ##############################################################################
 
-function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{DataReadDataFrame})
+function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     ds.rows = convert(Int, obs_count)
     return Cint(0)
 end
 
-function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable}, 
-                        variable_label::Cstring,  ds_ptr::Ptr{DataReadDataFrame})
+function handle_variable!(var_index::Cint, variable::Ptr{ReadStatVariable}, 
+                        variable_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::DataReadDataFrame
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
 
     name_str = get_name(variable)
     push!(ds.header, convert(Symbol, name_str))
@@ -134,10 +134,10 @@ function handle_variable!(var_index::Cint, variable::Ptr{DataReadVariable},
 end
 
 function handle_value!(obs_index::Cint, var_index::Cint, 
-                        value::DataReadValue, ds_ptr::Ptr{DataReadDataFrame})
+                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
     row = obs_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::DataReadDataFrame
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
 
     if get_ismissing(value) == 0
         readfield!(ds.data[col], row, col, value.union)
@@ -163,27 +163,27 @@ function readfield!(dest::NullableVector{Float32}, row, col, val)
     @inbounds dest.values[row], dest.isnull[row] =  reinterpret(Float32, val % Int32) , false
 end
 
-function handle_value_label!(val_labels::Cstring, value::DataReadValue, label::Cstring, ds_ptr::Ptr{DataReadDataFrame})
+function handle_value_label!(val_labels::Cstring, value::ReadStatValue, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
     return Cint(0)
 end
 
 function read_data_file(filename::AbstractString, filetype::Type)
     # initialize ds
-    ds = DataReadDataFrame()
+    ds = ReadStatDataFrame()
     # initialize parser
     parser = Parser()
     # parse
     parse_data_file!(ds, parser, filename, filetype)
-    # return dataframe instead of DataReadDataFrame
+    # return dataframe instead of ReadStatDataFrame
     return DataFrame(convert(Vector{Any},ds.data), Symbol[symbol(x) for x in ds.header])
 end
 
 function Parser()
     parser = ccall((:readstat_parser_init, "libreadstat"), Ptr{Void}, ())
-    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{DataReadDataFrame}))
-    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{DataReadVariable}, Cstring,  Ptr{DataReadDataFrame}))
-    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, DataReadValue, Ptr{DataReadDataFrame}))
-    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, DataReadValue, Cstring, Ptr{DataReadDataFrame}))
+    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
+    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{ReadStatVariable}, Cstring,  Ptr{ReadStatDataFrame}))
+    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, ReadStatValue, Ptr{ReadStatDataFrame}))
+    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, ReadStatValue, Cstring, Ptr{ReadStatDataFrame}))
     ccall((:readstat_set_info_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
     ccall((:readstat_set_variable_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
     ccall((:readstat_set_value_handler, "libreadstat"), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
@@ -195,7 +195,7 @@ for f in (:dta, :sav, :por, :sas7bdat)
     valtype = Val{f}
     # call respective parser
     @eval begin
-        function parse_data_file!(ds::DataReadDataFrame, parser, 
+        function parse_data_file!(ds::ReadStatDataFrame, parser, 
             filename::AbstractString, filetype::Type{$valtype})
             retval = ccall(($(string(:readstat_parse_, f)), "libreadstat"), 
                         Int, (Ptr{Void}, Ptr{UInt8}, Any),
@@ -213,4 +213,4 @@ for f in (:dta, :sav, :por, :sas7bdat)
 end
 
 
-end #module DataRead
+end #module ReadStat
