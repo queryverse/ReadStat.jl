@@ -1,3 +1,6 @@
+[![Travis CI build status](https://travis-ci.org/WizardMac/ReadStat.jl.svg?branch=master)](https://travis-ci.org/WizardMac/ReadStat.jl)
+[![Appveyor build status](https://ci.appveyor.com/api/projects/status/t297nextsc020qtd?svg=true)](https://ci.appveyor.com/project/evanmiller/dataread-jl/branch/master)
+
 ReadStat.jl: Read files from Stata, SPSS, and SAS
 --
 
