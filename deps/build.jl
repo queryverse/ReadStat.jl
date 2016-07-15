@@ -28,7 +28,7 @@ provides(SimpleBuild,
     using WinRPM
     push!(WinRPM.sources, "http://download.opensuse.org/repositories/home:/davidanthoff/openSUSE_13.2")
     WinRPM.update()
-    provides(WinRPM.RPM, "ReadStat", [libreadstat], os = :Windows)
+    provides(WinRPM.RPM, "readstat", [libreadstat], os = :Windows)
 end
 
 @BinDeps.install Dict([(:libreadstat, :libreadstat)])
