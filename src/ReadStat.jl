@@ -153,7 +153,7 @@ function handle_value!(obs_index::Cint, var_index::Cint,
 end
 
 function readfield!(dest::NullableVector{ASCIIString}, row, col, val)
-    val = bytestring(reinterpret(Ptr{Int8}, val))
+    val = bytestring(reinterpret(Ptr{Int8}, val % Csize_t))
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
