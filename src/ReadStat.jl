@@ -43,7 +43,7 @@ immutable ReadStatValue
     @static if is_windows()
         bits::Cuint
     else
-        bits::Uint8
+        bits::UInt8
     end
 end
 
