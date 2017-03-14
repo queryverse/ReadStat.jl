@@ -24,7 +24,7 @@ provides(SimpleBuild,
         end
     end), libreadstat, os=:Unix)
 
-@windows_only begin
+@static if is_windows()
     using WinRPM
     push!(WinRPM.sources, "http://download.opensuse.org/repositories/home:/davidanthoff/openSUSE_13.2")
     WinRPM.update()
