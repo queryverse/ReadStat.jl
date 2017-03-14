@@ -8,7 +8,7 @@ df = read_dta(dtafile)
 @test typeof(df[:, :vlong]) == NullableVector{Int32}
 @test typeof(df[:, :vint]) == NullableVector{Int16}
 @test typeof(df[:, :vbyte]) == NullableVector{Int8}
-@test typeof(df[:, :vstring]) == NullableVector{ASCIIString}
+@test typeof(df[:, :vstring]) == NullableVector{String}
 
 @test get(df[2, :vfloat]) == 7
 @test get(df[2, :vdouble]) == 7

@@ -40,8 +40,11 @@ immutable ReadStatValue
     union::Int64
     readstat_types_t::Cint
     tag::Cchar
-    @windows_only bits::Cuint
-    @unix_only bits::Uint8
+    @static if is_windows()
+        bits::Cuint
+    else
+        bits::UInt8
+    end
 end
 
 # actually not used
@@ -67,7 +70,7 @@ immutable ReadStatVariable
     format::Ptr{UInt8}
     label::Ptr{UInt8}
     label_set::Ptr{Void}
-    offset::Coff_t
+    offset::Int64
     width::Csize_t
     user_width::Csize_t
     missingness::ReadStatMissingness 
@@ -75,7 +78,7 @@ end
 
 function get_name(variable::Ptr{ReadStatVariable})
     name = ccall((:readstat_variable_get_name, libreadstat), Ptr{UInt8}, (Ptr{ReadStatVariable},), variable)
-    return bytestring(name)
+    return unsafe_string(name)
 end
 
 function get_type(variable::Ptr{ReadStatVariable})
@@ -120,7 +123,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{ReadStatVariable},
     data_type = get_type(variable)
     jtype = Float64
     if data_type == READSTAT_TYPE_STRING
-        jtype = ASCIIString
+        jtype = String
     elseif data_type == READSTAT_TYPE_CHAR
         jtype = Int8
     elseif data_type == READSTAT_TYPE_INT16
@@ -152,8 +155,8 @@ function handle_value!(obs_index::Cint, var_index::Cint,
     return Cint(0)
 end
 
-function readfield!(dest::NullableVector{ASCIIString}, row, col, val)
-    val = bytestring(reinterpret(Ptr{Int8}, val % Csize_t))
+function readfield!(dest::NullableVector{String}, row, col, val)
+    val = unsafe_string(reinterpret(Ptr{Int8}, val % Csize_t))
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
@@ -181,7 +184,7 @@ function read_data_file(filename::AbstractString, filetype::Type)
     # parse
     parse_data_file!(ds, parser, filename, filetype)
     # return dataframe instead of ReadStatDataFrame
-    return DataFrame(convert(Vector{Any},ds.data), Symbol[symbol(x) for x in ds.header])
+    return DataFrame(convert(Vector{Any},ds.data), Symbol[Symbol(x) for x in ds.header])
 end
 
 function Parser()
@@ -205,7 +208,7 @@ for f in (:dta, :sav, :por, :sas7bdat)
             filename::AbstractString, filetype::Type{$valtype})
             retval = ccall(($(string(:readstat_parse_, f)), libreadstat), 
                         Int, (Ptr{Void}, Ptr{UInt8}, Any),
-                        parser, bytestring(filename), ds)
+                        parser, string(filename), ds)
             ccall((:readstat_parser_free, libreadstat), Void, (Ptr{Void},), parser)
             retval == 0 ||  error("Error parsing $filename: $retval")
         end
@@ -215,7 +218,7 @@ end
 for f in (:dta, :sav, :por, :sas7bdat) 
     valtype = Val{f}
     # define read_dta that calls read(.., val{:dta}))
-    @eval $(symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
+    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
 end
 
 
