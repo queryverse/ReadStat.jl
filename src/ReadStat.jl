@@ -12,8 +12,10 @@ end
 ##
 ##############################################################################
 
-using NullableArrays
+import NullableArrays: NullableArray, NullableVector
+import DataArrays: DataArray, DataVector
 import DataFrames: DataFrame
+import DataTables: DataTable
 export read_dta, read_sav, read_por, read_sas7bdat
 
 ##############################################################################
@@ -96,9 +98,11 @@ type ReadStatDataFrame
     header::Vector{Symbol}
     types::Vector{DataType}
     rows::Int
+    storage_type::DataType
 end
-ReadStatDataFrame() = ReadStatDataFrame(Any[], Symbol[], DataType[], 0)
+ReadStatDataFrame(destination_type::DataType) = ReadStatDataFrame(Any[], Symbol[], DataType[], 0, destination_type)
 DataFrame(ds::ReadStatDataFrame) = DataFrame(ds.data, ds.header)
+DataTable(ds::ReadStatDataFrame) = DataTable(ds.data, ds.header)
 
 ##############################################################################
 ##
@@ -137,7 +141,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{ReadStatVariable},
     end
     push!(ds.types, jtype)
 
-    push!(ds.data, NullableArray(jtype, ds.rows))
+    push!(ds.data, ds.storage_type(jtype, ds.rows))
     
     return Cint(0)
 end
@@ -153,6 +157,23 @@ function handle_value!(obs_index::Cint, var_index::Cint,
     end
     
     return Cint(0)
+end
+
+function readfield!(dest::DataVector{String}, row, col, val)
+    val = unsafe_string(reinterpret(Ptr{Int8}, val % Csize_t))
+    @inbounds dest.data[row], dest.na[row] = val, false
+end
+
+function readfield!{T <: Integer}(dest::DataVector{T}, row, col, val)
+    @inbounds dest.data[row], dest.na[row] = val, false
+end
+
+function readfield!(dest::DataVector{Float64}, row, col, val)
+    @inbounds dest.data[row], dest.na[row] = reinterpret(Float64, val), false
+end
+
+function readfield!(dest::DataVector{Float32}, row, col, val)
+    @inbounds dest.data[row], dest.na[row] =  reinterpret(Float32, val % Int32) , false
 end
 
 function readfield!(dest::NullableVector{String}, row, col, val)
@@ -176,15 +197,23 @@ function handle_value_label!(val_labels::Cstring, value::ReadStatValue, label::C
     return Cint(0)
 end
 
-function read_data_file(filename::AbstractString, filetype::Type)
+function get_default_storage{T<:DataFrame}(::Type{T})
+    return DataArray
+end
+
+function get_default_storage{T<:DataTable}(::Type{T})
+    return NullableArray
+end
+
+function read_data_file{T}(::Type{T}, filename::AbstractString, filetype::Type)
     # initialize ds
-    ds = ReadStatDataFrame()
+    ds = ReadStatDataFrame(get_default_storage(T))
     # initialize parser
     parser = Parser()
     # parse
     parse_data_file!(ds, parser, filename, filetype)
     # return dataframe instead of ReadStatDataFrame
-    return DataFrame(convert(Vector{Any},ds.data), Symbol[Symbol(x) for x in ds.header])
+    return T(ds)
 end
 
 function Parser()
@@ -218,7 +247,8 @@ end
 for f in (:dta, :sav, :por, :sas7bdat) 
     valtype = Val{f}
     # define read_dta that calls read(.., val{:dta}))
-    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
+    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(DataFrame, filename, $valtype)
+    @eval $(Symbol(:read_, f)){T}(::Type{T}, filename::AbstractString) = read_data_file(T, filename, $valtype)
 end
 
 
