@@ -11,7 +11,7 @@ transport files from Stata, SPSS and SAS. All functions return either a
 [DataFrame](https://github.com/JuliaStats/DataFrames.jl) (default) or a
 [DataTable](https://github.com/JuliaData/DataTables.jl).
 
-Usage:
+## Usage:
 
 ```julia
 using ReadStat, DataTables, DataFrames
@@ -39,6 +39,12 @@ read_por(DataFrame, "/path/to/something.por")
 read_sav(DataFrame, "/path/to/something.sav")
 
 read_sas7bdat(DataFrame, "/path/to/something.sas7bdat")
+```
 
+## Installation
+To install the package, run the following:
 
+```julia
+Pkg.clone("https://github.com/WizardMac/ReadStat.jl")
+Pkg.build("ReadStat")
 ```
