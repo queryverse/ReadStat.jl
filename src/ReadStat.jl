@@ -98,9 +98,11 @@ type ReadStatDataFrame
     header::Vector{Symbol}
     types::Vector{DataType}
     rows::Int
-    storage_type::DataType
+    storage_type::Type
+
+    ReadStatDataFrame{T}(::Type{T}) = new(Any[], Symbol[], DataType[], 0, T)
 end
-ReadStatDataFrame(destination_type::DataType) = ReadStatDataFrame(Any[], Symbol[], DataType[], 0, destination_type)
+
 DataFrame(ds::ReadStatDataFrame) = DataFrame(ds.data, ds.header)
 DataTable(ds::ReadStatDataFrame) = DataTable(ds.data, ds.header)
 
