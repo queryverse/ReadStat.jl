@@ -1,6 +1,6 @@
 using ReadStat
 
-tests = ["read_dta.jl"]
+tests = ["read_dta.jl", "read_sav.jl", "read_sas7bdat.jl"]
 
 println("Running tests:")
 
