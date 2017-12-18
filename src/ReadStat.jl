@@ -38,7 +38,7 @@ const READSTAT_ERROR_MALLOC     = Cint(3)
 const READSTAT_ERROR_USER_ABORT = Cint(4)
 const READSTAT_ERROR_PARSE      = Cint(5)
 
-immutable ReadStatValue
+struct ReadStatValue
     union::Int64
     readstat_types_t::Cint
     tag::Cchar
@@ -60,12 +60,12 @@ end
 
 # Define ReadStatVariable to dispatch on get_type.
 # Define the type while we're at it
-immutable ReadStatMissingness
+struct ReadStatMissingness
     missing_ranges::ReadStatValue
     missing_ranges_count::Clong
 end
 
-immutable ReadStatVariable
+struct ReadStatVariable
     readstat_types_t::Cint
     index::Cint
     name::Ptr{UInt8}
@@ -93,7 +93,7 @@ end
 ##
 ##############################################################################
 
-type ReadStatDataFrame
+mutable struct ReadStatDataFrame
     data::Vector{Any}
     header::Vector{Symbol}
     types::Vector{DataType}
@@ -166,7 +166,7 @@ function readfield!(dest::DataVector{String}, row, col, val)
     @inbounds dest.data[row], dest.na[row] = val, false
 end
 
-function readfield!{T <: Integer}(dest::DataVector{T}, row, col, val)
+function readfield!(dest::DataVector{T}, row, col, val) where {T <: Integer}
     @inbounds dest.data[row], dest.na[row] = val, false
 end
 
@@ -183,7 +183,7 @@ function readfield!(dest::NullableVector{String}, row, col, val)
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
-function readfield!{T <: Integer}(dest::NullableVector{T}, row, col, val)
+function readfield!(dest::NullableVector{T}, row, col, val) where {T <: Integer}
     @inbounds dest.values[row], dest.isnull[row] = val, false
 end
 
@@ -199,15 +199,15 @@ function handle_value_label!(val_labels::Cstring, value::ReadStatValue, label::C
     return Cint(0)
 end
 
-function get_default_storage{T<:DataFrame}(::Type{T})
+function get_default_storage(::Type{T}) where {T <: DataFrame}
     return DataArray
 end
 
-function get_default_storage{T<:DataTable}(::Type{T})
+function get_default_storage(::Type{T}) where {T <: DataTable}
     return NullableArray
 end
 
-function read_data_file{T}(::Type{T}, filename::AbstractString, filetype::Type)
+function read_data_file(::Type{T}, filename::AbstractString, filetype::Type) where {T}
     # initialize ds
     ds = ReadStatDataFrame(get_default_storage(T))
     # initialize parser
@@ -250,7 +250,7 @@ for f in (:dta, :sav, :por, :sas7bdat)
     valtype = Val{f}
     # define read_dta that calls read(.., val{:dta}))
     @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(DataFrame, filename, $valtype)
-    @eval $(Symbol(:read_, f)){T}(::Type{T}, filename::AbstractString) = read_data_file(T, filename, $valtype)
+    @eval $(Symbol(:read_, f))(::Type{T}, filename::AbstractString) where {T} = read_data_file(T, filename, $valtype)
 end
 
 
