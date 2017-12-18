@@ -1,16 +1,52 @@
 using ReadStat
+using DataValues
+using Base.Test
 
-tests = ["read_dta.jl", "read_sav.jl", "read_sas7bdat.jl"]
+@testset "ReadStat" begin
 
-println("Running tests:")
+@testset "DTA files" begin
 
-for test in tests
-	try
-		include(test)
-		println("\t\033[1m\033[32mPASSED\033[0m: $(test)")
-	 catch e
-	 	println("\t\033[1m\033[31mFAILED\033[0m: $(test)")
-	 	showerror(STDOUT, e, backtrace())
-	 	rethrow(e)
-	 end
+dtafile = joinpath(dirname(@__FILE__), "types.dta")
+data, headers = read_dta(dtafile)
+
+@test length(data) == 6
+@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test data[1] == DataValueArray{Float32}([3.14, 7., NA])
+@test data[2] == DataValueArray{Float64}([3.14, 7., NA])
+@test data[3] == DataValueArray{Int32}([2, 7, NA])
+@test data[4] == DataValueArray{Int16}([2, 7, NA])
+@test data[5] == DataValueArray{Int8}([2, 7., NA])
+@test data[6] == DataValueArray{String}(["2", "7", ""])
+end
+
+@testset "SAV files" begin
+
+dtafile = joinpath(dirname(@__FILE__), "types.sav")
+data, headers = read_sav(dtafile)
+
+@test length(data) == 6
+@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test data[1] == DataValueArray{Float32}([3.14, 7., NA])
+@test data[2] == DataValueArray{Float64}([3.14, 7., NA])
+@test data[3] == DataValueArray{Int32}([2, 7, NA])
+@test data[4] == DataValueArray{Int16}([2, 7, NA])
+@test data[5] == DataValueArray{Int8}([2, 7., NA])
+@test data[6] == DataValueArray{String}(["2", "7", ""])
+end
+
+@testset "SAS7BDAT files" begin
+
+dtafile = joinpath(dirname(@__FILE__), "types.sas7bdat")
+data, headers = read_sas7bdat(dtafile)
+
+@test length(data) == 6
+@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test data[1] == DataValueArray{Float32}([3.14, 7., NA])
+@test data[2] == DataValueArray{Float64}([3.14, 7., NA])
+@test data[3] == DataValueArray{Int32}([2, 7, NA])
+@test data[4] == DataValueArray{Int16}([2, 7, NA])
+@test data[5] == DataValueArray{Int8}([2, 7., NA])
+@test data[6] == DataValueArray{String}(["2", "7", ""])
+end
+
 end

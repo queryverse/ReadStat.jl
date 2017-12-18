@@ -12,10 +12,8 @@ end
 ##
 ##############################################################################
 
-import NullableArrays: NullableArray, NullableVector
-import DataArrays: DataArray, DataVector
-import DataFrames: DataFrame
-import DataTables: DataTable
+import DataValues: DataValueVector, DataValueArray
+
 export read_dta, read_sav, read_por, read_sas7bdat
 
 ##############################################################################
@@ -98,13 +96,9 @@ mutable struct ReadStatDataFrame
     header::Vector{Symbol}
     types::Vector{DataType}
     rows::Int
-    storage_type::Type
 
-    ReadStatDataFrame{T}(::Type{T}) = new(Any[], Symbol[], DataType[], 0, T)
+    ReadStatDataFrame() = new(Any[], Symbol[], DataType[], 0)
 end
-
-DataFrame(ds::ReadStatDataFrame) = DataFrame(ds.data, ds.header)
-DataTable(ds::ReadStatDataFrame) = DataTable(ds.data, ds.header)
 
 ##############################################################################
 ##
@@ -143,7 +137,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{ReadStatVariable},
     end
     push!(ds.types, jtype)
 
-    push!(ds.data, ds.storage_type(jtype, ds.rows))
+    push!(ds.data, DataValueVector{jtype}(ds.rows))
     
     return Cint(0)
 end
@@ -161,61 +155,36 @@ function handle_value!(obs_index::Cint, var_index::Cint,
     return Cint(0)
 end
 
-function readfield!(dest::DataVector{String}, row, col, val)
+function readfield!(dest::DataValueVector{String}, row, col, val)
     val = unsafe_string(reinterpret(Ptr{Int8}, val % Csize_t))
-    @inbounds dest.data[row], dest.na[row] = val, false
+    @inbounds dest[row] = val
 end
 
-function readfield!(dest::DataVector{T}, row, col, val) where {T <: Integer}
-    @inbounds dest.data[row], dest.na[row] = val, false
+function readfield!(dest::DataValueVector{T}, row, col, val) where {T <: Integer}
+    @inbounds dest[row] = val
 end
 
-function readfield!(dest::DataVector{Float64}, row, col, val)
-    @inbounds dest.data[row], dest.na[row] = reinterpret(Float64, val), false
+function readfield!(dest::DataValueVector{Float64}, row, col, val)
+    @inbounds dest[row] = reinterpret(Float64, val)
 end
 
-function readfield!(dest::DataVector{Float32}, row, col, val)
-    @inbounds dest.data[row], dest.na[row] =  reinterpret(Float32, val % Int32) , false
-end
-
-function readfield!(dest::NullableVector{String}, row, col, val)
-    val = unsafe_string(reinterpret(Ptr{Int8}, val % Csize_t))
-    @inbounds dest.values[row], dest.isnull[row] = val, false
-end
-
-function readfield!(dest::NullableVector{T}, row, col, val) where {T <: Integer}
-    @inbounds dest.values[row], dest.isnull[row] = val, false
-end
-
-function readfield!(dest::NullableVector{Float64}, row, col, val)
-    @inbounds dest.values[row], dest.isnull[row] = reinterpret(Float64, val), false
-end
-
-function readfield!(dest::NullableVector{Float32}, row, col, val)
-    @inbounds dest.values[row], dest.isnull[row] =  reinterpret(Float32, val % Int32) , false
+function readfield!(dest::DataValueVector{Float32}, row, col, val)
+    @inbounds dest[row] = reinterpret(Float32, val % Int32)
 end
 
 function handle_value_label!(val_labels::Cstring, value::ReadStatValue, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
     return Cint(0)
 end
 
-function get_default_storage(::Type{T}) where {T <: DataFrame}
-    return DataArray
-end
-
-function get_default_storage(::Type{T}) where {T <: DataTable}
-    return NullableArray
-end
-
-function read_data_file(::Type{T}, filename::AbstractString, filetype::Type) where {T}
+function read_data_file(filename::AbstractString, filetype::Type)
     # initialize ds
-    ds = ReadStatDataFrame(get_default_storage(T))
+    ds = ReadStatDataFrame()
     # initialize parser
     parser = Parser()
     # parse
     parse_data_file!(ds, parser, filename, filetype)
     # return dataframe instead of ReadStatDataFrame
-    return T(ds)
+    return ds.data, ds.header
 end
 
 function Parser()
@@ -249,8 +218,7 @@ end
 for f in (:dta, :sav, :por, :sas7bdat) 
     valtype = Val{f}
     # define read_dta that calls read(.., val{:dta}))
-    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(DataFrame, filename, $valtype)
-    @eval $(Symbol(:read_, f))(::Type{T}, filename::AbstractString) where {T} = read_data_file(T, filename, $valtype)
+    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
 end
 
 
