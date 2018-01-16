@@ -7,10 +7,11 @@ using Base.Test
 @testset "DTA files" begin
 
 dtafile = joinpath(dirname(@__FILE__), "types.dta")
-data, headers = read_dta(dtafile)
+rsdf = read_dta(dtafile)
+data = rsdf.data
 
 @test length(data) == 6
-@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test rsdf.headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
 @test data[1] == DataValueArray{Float32}([3.14, 7., NA])
 @test data[2] == DataValueArray{Float64}([3.14, 7., NA])
 @test data[3] == DataValueArray{Int32}([2, 7, NA])
@@ -22,10 +23,11 @@ end
 @testset "SAV files" begin
 
 dtafile = joinpath(dirname(@__FILE__), "types.sav")
-data, headers = read_sav(dtafile)
+rsdf = read_sav(dtafile)
+data = rsdf.data
 
 @test length(data) == 6
-@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test rsdf.headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
 @test data[1] == DataValueArray{Float32}([3.14, 7., NA])
 @test data[2] == DataValueArray{Float64}([3.14, 7., NA])
 @test data[3] == DataValueArray{Int32}([2, 7, NA])
@@ -37,10 +39,11 @@ end
 @testset "SAS7BDAT files" begin
 
 dtafile = joinpath(dirname(@__FILE__), "types.sas7bdat")
-data, headers = read_sas7bdat(dtafile)
+rsdf = read_sas7bdat(dtafile)
+data = rsdf.data
 
 @test length(data) == 6
-@test headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
+@test rsdf.headers == [:vfloat, :vdouble, :vlong, :vint, :vbyte, :vstring]
 @test data[1] == DataValueArray{Float32}([3.14, 7., NA])
 @test data[2] == DataValueArray{Float64}([3.14, 7., NA])
 @test data[3] == DataValueArray{Int32}([2, 7, NA])

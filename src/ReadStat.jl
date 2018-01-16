@@ -55,7 +55,7 @@ end
 
 mutable struct ReadStatDataFrame
     data::Vector{Any}
-    header::Vector{Symbol}
+    headers::Vector{Symbol}
     types::Vector{DataType}
     labels::Vector{String}
     formats::Vector{String}
@@ -97,10 +97,17 @@ end
 
 get_name(var::Ptr{Void}) = Symbol(unsafe_string(ccall((:readstat_variable_get_name, libreadstat),
                                   Cstring, (Ptr{Void},), var)))
-get_label(var::Ptr{Void}) = unsafe_string(ccall((:readstat_variable_get_label, libreadstat),
-                                          Cstring, (Ptr{Void},), var))
-get_format(var::Ptr{Void}) = unsafe_string(ccall((:readstat_variable_get_format, libreadstat),
-                                           Cstring, (Ptr{Void},), var))
+
+function get_label(var::Ptr{Void})
+    ptr = ccall((:readstat_variable_get_label, libreadstat), Cstring, (Ptr{Void},), var)
+    ptr == C_NULL ? "" : unsafe_string(ptr)
+end
+
+function get_format(var::Ptr{Void})
+    ptr = ccall((:readstat_variable_get_format, libreadstat), Cstring, (Ptr{Void},), var)
+    ptr == C_NULL ? "" : unsafe_string(ptr)
+end
+
 function get_type(var::Ptr{Void})
     data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Void},), var)
    
@@ -125,14 +132,17 @@ end
 
 get_storagewidth(var::Ptr{Void}) = ccall((:readstat_variable_get_storage_width, libreadstat),
                                          Csize_t, (Ptr{Void},), var)
+
 get_measure(var::Ptr{Void}) = ccall((:readstat_variable_get_measure, libreadstat), Cint, (Ptr{Void},), var)
+
 get_alignment(var::Ptr{Void}) = ccall((:readstat_variable_get_alignment, libreadstat), Cint, (Ptr{Void},), var)
+
 function handle_variable!(var_index::Cint, variable::Ptr{Void}, 
                          variable_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
 
-    push!(ds.header, get_name(variable))
+    push!(ds.headers, get_name(variable))
     push!(ds.labels, get_label(variable))
     push!(ds.formats, get_format(variable))
     jtype = get_type(variable)
@@ -159,8 +169,10 @@ function handle_value!(obs_index::Cint, var_index::Cint,
 end
 
 function readfield!(dest::DataValueVector{String}, row, val::Value)
-    str = unsafe_string(ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val))
-    @inbounds dest[row] = str
+    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
+    if ptr ≠ C_NULL
+        @inbounds dest[row] = unsafe_string(ptr)
+    end
 end
 
 function readfield!(dest::DataValueVector{Int8}, row, val::Value)
