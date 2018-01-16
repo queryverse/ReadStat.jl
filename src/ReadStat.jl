@@ -112,22 +112,19 @@ function get_type(var::Ptr{Void})
     data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Void},), var)
    
     if data_type == READSTAT_TYPE_STRING
-        String
+        return String
     elseif data_type == READSTAT_TYPE_CHAR
-        Int8
+        return Int8
     elseif data_type == READSTAT_TYPE_INT16
-        Int16
+        return Int16
     elseif data_type == READSTAT_TYPE_INT32
-        Int32
+        return Int32
     elseif data_type == READSTAT_TYPE_FLOAT
-        Float32
+        return Float32
     elseif data_type == READSTAT_TYPE_DOUBLE
-        Float64
-    elseif data_type == READSTAT_TYPE_LONG_STRING
-        Void
-    else
-        Void
+        return Float64
     end
+    return Void
 end
 
 get_storagewidth(var::Ptr{Void}) = ccall((:readstat_variable_get_storage_width, libreadstat),
