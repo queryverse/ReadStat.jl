@@ -62,7 +62,8 @@ mutable struct ReadStatDataFrame
     storagewidths::Vector{Csize_t}
     measures::Vector{Cint}
     alignments::Vector{Cint}
-    value_labels::Vector{Dict{Any,String}}
+    val_labels::Vector{String}
+    val_label_dict::Dict{String, Dict{Any,String}}
     rows::Int
     columns::Int
     filelabel::String
@@ -71,7 +72,7 @@ mutable struct ReadStatDataFrame
 
     ReadStatDataFrame() = 
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        Dict{Any,String}[], 0, 0, "", Dates.unix2datetime(0), 0)
+        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0)
 end
 
 ##############################################################################
@@ -135,10 +136,11 @@ get_measure(var::Ptr{Void}) = ccall((:readstat_variable_get_measure, libreadstat
 get_alignment(var::Ptr{Void}) = ccall((:readstat_variable_get_alignment, libreadstat), Cint, (Ptr{Void},), var)
 
 function handle_variable!(var_index::Cint, variable::Ptr{Void}, 
-                         variable_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
+                         val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+    ds = unsafe_pointer_to_objref(ds_ptr)
 
+    push!(ds.val_labels, (val_label == C_NULL ? "" : unsafe_string(val_label)))
     push!(ds.headers, get_name(variable))
     push!(ds.labels, get_label(variable))
     push!(ds.formats, get_format(variable))
@@ -153,6 +155,22 @@ function handle_variable!(var_index::Cint, variable::Ptr{Void},
 end
 
 const Value = ReadStatValue
+
+function get_type(val::Value)
+    data_type = ccall((:readstat_value_type, libreadstat), Cint, (Value,), val)
+
+    return [String, UInt8, Int16, Int32, Float32, Float64, String][data_type + 1]
+end
+
+Base.convert(::Type{UInt8}, val::Value) = ccall((:readstat_int8_value, libreadstat), UInt8, (Value,), val)
+Base.convert(::Type{Int16}, val::Value) = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
+Base.convert(::Type{Int32}, val::Value) = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
+Base.convert(::Type{Float32}, val::Value) = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
+Base.convert(::Type{Float64}, val::Value) = ccall((:readstat_double_value, libreadstat), Float64, (Value,), val)
+function Base.convert(::Type{String}, val::Value)
+    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
+    ptr ≠ C_NULL ? unsafe_string(ptr) : ""
+end
 
 val_ismissing(val::Value) = ccall((:readstat_value_is_missing, libreadstat), Bool, (Value,), val)
 function handle_value!(obs_index::Cint, var_index::Cint, 
@@ -193,6 +211,11 @@ function readfield!(dest::DataValueVector{Float32}, row, val::Value)
 end
 
 function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
+    val_labels ≠ C_NULL || return Cint(0)
+    ds = unsafe_pointer_to_objref(ds_ptr)
+    dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
+    dict[convert(get_type(value), value)] = unsafe_string(label)
+    
     return Cint(0)
 end
 
