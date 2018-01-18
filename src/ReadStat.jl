@@ -62,7 +62,7 @@ mutable struct ReadStatDataFrame
     storagewidths::Vector{Csize_t}
     measures::Vector{Cint}
     alignments::Vector{Cint}
-    val_labels::Vector{String}
+    val_label_keys::Vector{String}
     val_label_dict::Dict{String, Dict{Any,String}}
     rows::Int
     columns::Int
@@ -171,6 +171,7 @@ function Base.convert(::Type{String}, val::Value)
     ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
     ptr ≠ C_NULL ? unsafe_string(ptr) : ""
 end
+as_native(val::Value) = convert(get_type(val), val)
 
 val_ismissing(val::Value) = ccall((:readstat_value_is_missing, libreadstat), Bool, (Value,), val)
 function handle_value!(obs_index::Cint, var_index::Cint, 
@@ -214,7 +215,7 @@ function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, 
     val_labels ≠ C_NULL || return Cint(0)
     ds = unsafe_pointer_to_objref(ds_ptr)
     dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
-    dict[convert(get_type(value), value)] = unsafe_string(label)
+    dict[as_native(val)] = unsafe_string(label)
     
     return Cint(0)
 end
