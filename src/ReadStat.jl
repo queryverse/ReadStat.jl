@@ -140,7 +140,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{Void},
     col = var_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)
 
-    push!(ds.val_labels, (val_label == C_NULL ? "" : unsafe_string(val_label)))
+    push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
     push!(ds.headers, get_name(variable))
     push!(ds.labels, get_label(variable))
     push!(ds.formats, get_format(variable))
@@ -215,7 +215,7 @@ function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, 
     val_labels ≠ C_NULL || return Cint(0)
     ds = unsafe_pointer_to_objref(ds_ptr)
     dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
-    dict[as_native(val)] = unsafe_string(label)
+    dict[as_native(value)] = unsafe_string(label)
     
     return Cint(0)
 end
