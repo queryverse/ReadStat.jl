@@ -5,7 +5,8 @@ environment:
 
 branches:
   only:
-    - master
+  - master
+  - /release-.*/
 
 notifications:
   - provider: Email

@@ -6,5 +6,10 @@ julia:
   - 0.6
 notifications:
   email: false
+branches:
+  only:
+  - master
+  - /release-.*/
+  - /v(\d+)\.(\d+)\.(\d+)/
 after_success:
   - julia -e 'cd(Pkg.dir("ReadStat")); Pkg.add("Coverage"); using Coverage; Coveralls.submit(process_folder())'
