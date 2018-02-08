@@ -1,10 +1,11 @@
 module ReadStat
 
-if isfile(joinpath(dirname(@__FILE__),"..","deps","deps.jl"))
-    include("../deps/deps.jl")
-else
-    error("ReadStat not properly installed. Please run Pkg.build(\"ReadStat\")")
+# Load libsnappy from our deps.jl
+const depsjl_path = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
+if !isfile(depsjl_path)
+    error("ReadStat not installed properly, run Pkg.build(\"ReadStat\"), restart Julia and try again")
 end
+include(depsjl_path)
 
 ##############################################################################
 ##
