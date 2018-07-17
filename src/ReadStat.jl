@@ -1,10 +1,11 @@
 module ReadStat
 
-if isfile(joinpath(dirname(@__FILE__),"..","deps","deps.jl"))
-    include("../deps/deps.jl")
-else
-    error("ReadStat not properly installed. Please run Pkg.build(\"ReadStat\")")
+# Load libreadstat from our deps.jl
+const depsjl_path = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
+if !isfile(depsjl_path)
+    error("ReadStat not installed properly, run Pkg.build(\"ReadStat\"), restart Julia and try again")
 end
+include(depsjl_path)
 
 ##############################################################################
 ##
@@ -53,6 +54,8 @@ struct ReadStatValue
     end
 end
 
+include("C_interface.jl")
+
 mutable struct ReadStatDataFrame
     data::Vector{Any}
     headers::Vector{Symbol}
@@ -88,11 +91,13 @@ function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{ReadStatData
     return Cint(0)
 end
 
-function handle_metadata!(file_label::Cstring, timestamp::Int, format::Clong, ds_ptr::Ptr{ReadStatDataFrame})
+function handle_metadata!(metadata::Ptr{Void}, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
-    ds.filelabel = unsafe_string(file_label)
-    ds.timestamp = Dates.unix2datetime(timestamp)
-    ds.format = format
+    ds.filelabel = readstat_get_file_label(metadata)
+    ds.timestamp = Dates.unix2datetime(readstat_get_modified_time(metadata))
+    ds.format = readstat_get_file_format_version(metadata)
+    ds.rows = readstat_get_row_count(metadata)
+    ds.columns = readstat_get_var_count(metadata)
     return Cint(0)
 end
 
@@ -111,7 +116,7 @@ end
 
 function get_type(var::Ptr{Void})
     data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Void},), var)
-   
+
     if data_type == READSTAT_TYPE_STRING
         return String
     elseif data_type == READSTAT_TYPE_CHAR
@@ -159,10 +164,10 @@ const Value = ReadStatValue
 function get_type(val::Value)
     data_type = ccall((:readstat_value_type, libreadstat), Cint, (Value,), val)
 
-    return [String, UInt8, Int16, Int32, Float32, Float64, String][data_type + 1]
+    return [String, Int8, Int16, Int32, Float32, Float64, String][data_type + 1]
 end
 
-Base.convert(::Type{UInt8}, val::Value) = ccall((:readstat_int8_value, libreadstat), UInt8, (Value,), val)
+Base.convert(::Type{Int8}, val::Value) = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
 Base.convert(::Type{Int16}, val::Value) = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
 Base.convert(::Type{Int32}, val::Value) = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
 Base.convert(::Type{Float32}, val::Value) = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
@@ -173,14 +178,14 @@ function Base.convert(::Type{String}, val::Value)
 end
 as_native(val::Value) = convert(get_type(val), val)
 
-val_ismissing(val::Value) = ccall((:readstat_value_is_missing, libreadstat), Bool, (Value,), val)
-function handle_value!(obs_index::Cint, var_index::Cint, 
-                       value::Value, ds_ptr::Ptr{ReadStatDataFrame})
+function handle_value!(obs_index::Cint, variable::Ptr{Void},
+                       value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
-    if !val_ismissing(value)
+    var_index = readstat_variable_get_index(variable)
+    if !readstat_value_is_missing(value, variable)
         readfield!(ds.data[var_index + 1], obs_index + 1, value)
     end
-    
+
     return Cint(0)
 end
 
@@ -234,11 +239,10 @@ end
 function Parser()
     parser = ccall((:readstat_parser_init, libreadstat), Ptr{Void}, ())
     const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
-    const meta_fxn = cfunction(handle_metadata!, Cint, (Cstring, Int, Clong, Ptr{ReadStatDataFrame}))
+    const meta_fxn = cfunction(handle_metadata!, Cint, (Ptr{Void}, Ptr{ReadStatDataFrame}))
     const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{Void}, Cstring,  Ptr{ReadStatDataFrame}))
-    const val_fxn = cfunction(handle_value!, Cint, (Cint, Cint, Value, Ptr{ReadStatDataFrame}))
+    const val_fxn = cfunction(handle_value!, Cint, (Cint, Ptr{Void}, ReadStatValue, Ptr{ReadStatDataFrame}))
     const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_info_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, info_fxn)
     ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, meta_fxn)
     ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
     ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
