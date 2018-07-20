@@ -1,6 +1,6 @@
 using ReadStat
 using DataValues
-using Base.Test
+using Test
 
 @testset "ReadStat" begin
 

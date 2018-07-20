@@ -13,7 +13,8 @@ include(depsjl_path)
 ##
 ##############################################################################
 
-using DataValues.DataValueVector
+using DataValues: DataValueVector
+using Dates
 
 export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
 
@@ -47,7 +48,7 @@ struct ReadStatValue
     union::Int64
     readstat_types_t::Cint
     tag::Cchar
-    @static if is_windows()
+    @static if Sys.iswindows()
         bits::Cuint
     else
         bits::UInt8
@@ -91,7 +92,7 @@ function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{ReadStatData
     return Cint(0)
 end
 
-function handle_metadata!(metadata::Ptr{Void}, ds_ptr::Ptr{ReadStatDataFrame})
+function handle_metadata!(metadata::Ptr{Nothing}, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     ds.filelabel = readstat_get_file_label(metadata)
     ds.timestamp = Dates.unix2datetime(readstat_get_modified_time(metadata))
@@ -101,21 +102,21 @@ function handle_metadata!(metadata::Ptr{Void}, ds_ptr::Ptr{ReadStatDataFrame})
     return Cint(0)
 end
 
-get_name(var::Ptr{Void}) = Symbol(unsafe_string(ccall((:readstat_variable_get_name, libreadstat),
-                                  Cstring, (Ptr{Void},), var)))
+get_name(var::Ptr{Nothing}) = Symbol(unsafe_string(ccall((:readstat_variable_get_name, libreadstat),
+                                  Cstring, (Ptr{Nothing},), var)))
 
-function get_label(var::Ptr{Void})
-    ptr = ccall((:readstat_variable_get_label, libreadstat), Cstring, (Ptr{Void},), var)
+function get_label(var::Ptr{Nothing})
+    ptr = ccall((:readstat_variable_get_label, libreadstat), Cstring, (Ptr{Nothing},), var)
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_format(var::Ptr{Void})
-    ptr = ccall((:readstat_variable_get_format, libreadstat), Cstring, (Ptr{Void},), var)
+function get_format(var::Ptr{Nothing})
+    ptr = ccall((:readstat_variable_get_format, libreadstat), Cstring, (Ptr{Nothing},), var)
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_type(var::Ptr{Void})
-    data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Void},), var)
+function get_type(var::Ptr{Nothing})
+    data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Nothing},), var)
 
     if data_type == READSTAT_TYPE_STRING
         return String
@@ -130,17 +131,17 @@ function get_type(var::Ptr{Void})
     elseif data_type == READSTAT_TYPE_DOUBLE
         return Float64
     end
-    return Void
+    return Nothing
 end
 
-get_storagewidth(var::Ptr{Void}) = ccall((:readstat_variable_get_storage_width, libreadstat),
-                                         Csize_t, (Ptr{Void},), var)
+get_storagewidth(var::Ptr{Nothing}) = ccall((:readstat_variable_get_storage_width, libreadstat),
+                                         Csize_t, (Ptr{Nothing},), var)
 
-get_measure(var::Ptr{Void}) = ccall((:readstat_variable_get_measure, libreadstat), Cint, (Ptr{Void},), var)
+get_measure(var::Ptr{Nothing}) = ccall((:readstat_variable_get_measure, libreadstat), Cint, (Ptr{Nothing},), var)
 
-get_alignment(var::Ptr{Void}) = ccall((:readstat_variable_get_alignment, libreadstat), Cint, (Ptr{Void},), var)
+get_alignment(var::Ptr{Nothing}) = ccall((:readstat_variable_get_alignment, libreadstat), Cint, (Ptr{Nothing},), var)
 
-function handle_variable!(var_index::Cint, variable::Ptr{Void}, 
+function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)
@@ -178,7 +179,7 @@ function Base.convert(::Type{String}, val::Value)
 end
 as_native(val::Value) = convert(get_type(val), val)
 
-function handle_value!(obs_index::Cint, variable::Ptr{Void},
+function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     var_index = readstat_variable_get_index(variable)
@@ -237,16 +238,16 @@ function read_data_file(filename::AbstractString, filetype::Type)
 end
 
 function Parser()
-    parser = ccall((:readstat_parser_init, libreadstat), Ptr{Void}, ())
-    const info_fxn = cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
-    const meta_fxn = cfunction(handle_metadata!, Cint, (Ptr{Void}, Ptr{ReadStatDataFrame}))
-    const var_fxn = cfunction(handle_variable!, Cint, (Cint, Ptr{Void}, Cstring,  Ptr{ReadStatDataFrame}))
-    const val_fxn = cfunction(handle_value!, Cint, (Cint, Ptr{Void}, ReadStatValue, Ptr{ReadStatDataFrame}))
-    const label_fxn = cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, meta_fxn)
-    ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, var_fxn)
-    ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, val_fxn)
-    ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Void}, Ptr{Void}), parser, label_fxn)
+    parser = ccall((:readstat_parser_init, libreadstat), Ptr{Nothing}, ())
+    info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
+    meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
+    var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
+    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
+    label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
+    ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
+    ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
+    ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
+    ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
 end  
 
@@ -257,9 +258,9 @@ for f in (:dta, :sav, :por, :sas7bdat)
         function parse_data_file!(ds::ReadStatDataFrame, parser, 
             filename::AbstractString, filetype::Type{$valtype})
             retval = ccall(($(string(:readstat_parse_, f)), libreadstat), 
-                        Int, (Ptr{Void}, Cstring, Any),
+                        Int, (Ptr{Nothing}, Cstring, Any),
                         parser, string(filename), ds)
-            ccall((:readstat_parser_free, libreadstat), Void, (Ptr{Void},), parser)
+            ccall((:readstat_parser_free, libreadstat), Nothing, (Ptr{Nothing},), parser)
             retval == 0 ||  error("Error parsing $filename: $retval")
         end
     end
