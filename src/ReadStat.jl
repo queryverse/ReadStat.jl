@@ -1,5 +1,7 @@
 module ReadStat
 
+import StringEncodings
+
 # Load libreadstat from our deps.jl
 const depsjl_path = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
 if !isfile(depsjl_path)
