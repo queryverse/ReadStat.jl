@@ -4,7 +4,7 @@
 [![Build Status](https://travis-ci.org/queryverse/ReadStat.jl.svg?branch=master)](https://travis-ci.org/queryverse/ReadStat.jl)
 [![Build status](https://ci.appveyor.com/api/projects/status/99xmebpmtcvv7gxw/branch/master?svg=true)](https://ci.appveyor.com/project/queryverse/readstat-jl/branch/master)
 [![ReadStat](http://pkg.julialang.org/badges/ReadStat_0.6.svg)](http://pkg.julialang.org/?pkg=ReadStat)
-[![Coverage Status](https://coveralls.io/repos/github/WizardMac/ReadStat.jl/badge.svg?branch=master)](https://coveralls.io/github/WizardMac/ReadStat.jl?branch=master)
+[![codecov](https://codecov.io/gh/queryverse/ReadStat.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/queryverse/ReadStat.jl)
 
 ## Overview
 
