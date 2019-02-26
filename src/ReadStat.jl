@@ -57,7 +57,7 @@ struct ReadStatValue
     end
 end
 
-include("C_interface.jl")
+const Value = ReadStatValue
 
 mutable struct ReadStatDataFrame
     data::Vector{Any}
@@ -80,6 +80,8 @@ mutable struct ReadStatDataFrame
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
         String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0)
 end
+
+include("C_interface.jl")
 
 ##############################################################################
 ##
@@ -104,8 +106,7 @@ function handle_metadata!(metadata::Ptr{Nothing}, ds_ptr::Ptr{ReadStatDataFrame}
     return Cint(0)
 end
 
-get_name(var::Ptr{Nothing}) = Symbol(unsafe_string(ccall((:readstat_variable_get_name, libreadstat),
-                                  Cstring, (Ptr{Nothing},), var)))
+get_name(variable::Ptr{Nothing}) = Symbol(readstat_variable_get_name(variable))
 
 function get_label(var::Ptr{Nothing})
     ptr = ccall((:readstat_variable_get_label, libreadstat), Cstring, (Ptr{Nothing},), var)
@@ -117,8 +118,8 @@ function get_format(var::Ptr{Nothing})
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_type(var::Ptr{Nothing})
-    data_type = ccall((:readstat_variable_get_type, libreadstat), Cint, (Ptr{Nothing},), var)
+function get_type(variable::Ptr{Nothing})
+    data_type = readstat_variable_get_type(variable)
 
     if data_type == READSTAT_TYPE_STRING
         return String
@@ -136,12 +137,11 @@ function get_type(var::Ptr{Nothing})
     return Nothing
 end
 
-get_storagewidth(var::Ptr{Nothing}) = ccall((:readstat_variable_get_storage_width, libreadstat),
-                                         Csize_t, (Ptr{Nothing},), var)
+get_storagewidth(variable::Ptr{Nothing}) = readstat_variable_get_storage_width(variable)
 
-get_measure(var::Ptr{Nothing}) = ccall((:readstat_variable_get_measure, libreadstat), Cint, (Ptr{Nothing},), var)
+get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
-get_alignment(var::Ptr{Nothing}) = ccall((:readstat_variable_get_alignment, libreadstat), Cint, (Ptr{Nothing},), var)
+get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
 function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
@@ -162,11 +162,8 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     return Cint(0)
 end
 
-const Value = ReadStatValue
-
 function get_type(val::Value)
-    data_type = ccall((:readstat_value_type, libreadstat), Cint, (Value,), val)
-
+    data_type = readstat_value_type(val)
     return [String, Int8, Int16, Int32, Float32, Float64, String][data_type + 1]
 end
 
@@ -228,7 +225,7 @@ function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, 
     return Cint(0)
 end
 
-function read_data_file(filename::AbstractString, filetype::Type)
+function read_data_file(filename::AbstractString, filetype::Val)
     # initialize ds
     ds = ReadStatDataFrame()
     # initialize parser
@@ -253,26 +250,15 @@ function Parser()
     return parser
 end  
 
-for f in (:dta, :sav, :por, :sas7bdat) 
-    valtype = Val{f}
-    # call respective parser
-    @eval begin
-        function parse_data_file!(ds::ReadStatDataFrame, parser, 
-            filename::AbstractString, filetype::Type{$valtype})
-            retval = ccall(($(string(:readstat_parse_, f)), libreadstat), 
-                        Int, (Ptr{Nothing}, Cstring, Any),
-                        parser, string(filename), ds)
-            ccall((:readstat_parser_free, libreadstat), Nothing, (Ptr{Nothing},), parser)
-            retval == 0 ||  error("Error parsing $filename: $retval")
-        end
-    end
+function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
+    retval = readstat_parse(filename, filetype, parser, ds)
+    readstat_parser_free(parser)
+    retval == 0 ||  error("Error parsing $filename: $retval")
 end
 
-for f in (:dta, :sav, :por, :sas7bdat) 
-    valtype = Val{f}
-    # define read_dta that calls read(.., val{:dta}))
-    @eval $(Symbol(:read_, f))(filename::AbstractString) = read_data_file(filename, $valtype)
-end
-
+read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
+read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
+read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
+read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
 
 end #module ReadStat
