@@ -248,7 +248,7 @@ function Parser()
     ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
     ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
-end  
+end
 
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
@@ -256,9 +256,62 @@ function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename:
     retval == 0 ||  error("Error parsing $filename: $retval")
 end
 
+
+function handle_write!()
+
+end
+
+function Writer(source; file_label="File Label")
+    writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
+    write_bytes = @cfunction(handle_write!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
+    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, ), parser, write_bytes)
+    ccall((:readstat_writer_set_file_label, libreadstat, Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
+    return writer
+end
+
+function write_data_file(filename::AbstractString, filetype::Val, io::IO, source)
+    writer = Writer(source)
+    fields = fieldnames(eltype(source))
+    variables_array = []
+
+    for field in fields:
+        variable = ccall((:readstat_add_variable, libreadstat), Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), writer, String(field), READSTAT_TYPE_DOUBLE, 0); # TODO: know width
+        readstat_variable_set_label(variable, String(field))
+        variables_array.push!(variable)
+    
+    variables = NamedTuple{(fields...,)}((variables...,)) # generate a NamedTuple for variables
+
+    
+    if Base.IteratorSize(source) == Base.HasLength(): # TODO: what about HasShape
+        row_count = length(q)
+    else: #fallback
+        row_count = 0
+        for _ in source
+            row_count += 1
+        end
+
+    readstat_begin_writing(writer, filetype, io, row_count)
+
+    for row in source
+        readstat_begin_row(writer)
+        for field in fields
+            readstat_insert_double_value(writer, variables[field], row[field]) # TODO: more than double
+        end
+        readstat_end_row(writer);
+    end
+
+    ccall((:readstat_end_writing, libreadstat), Int, (Ptr{Nothing}), writer)
+    ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing}), writer)
+end
+
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
+
+write_dta(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:dta), io, source)
+write_sav(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:sav), io, source)
+write_por(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:por), io, source)
+write_sas7bdat(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:sas7bdat), io, source)
 
 end #module ReadStat
