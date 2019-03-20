@@ -72,27 +72,27 @@ function readstat_parse(filename::String, type::Val{:sas7bdat}, parser::Ptr{Noth
 end
 
 function readstat_begin_row(writer)
-    return ccall((:readstat_begin_row), Int, (Ptr{Nothing},), writer)
+    return ccall((:readstat_begin_row, libreadstat), Int, (Ptr{Nothing},), writer)
 end
 
 function readstat_end_row(writer)
-    return ccall((:readstat_end_row), Int, (Ptr{Nothing},), writer)
+    return ccall((:readstat_end_row, libreadstat), Int, (Ptr{Nothing},), writer)
 end
 
 function readstat_begin_writing(writer, filetype::Val{:dta}, io, row_count)
-    return ccall((:readstat_begin_writing_dta, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, io, Cint(row_count))
+    return ccall((:readstat_begin_writing_dta, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
 end
 
 function readstat_begin_writing(writer, filetype::Val{:sav}, io, row_count)
-    return ccall((:readstat_begin_writing_sav, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, io, Cint(row_count))
+    return ccall((:readstat_begin_writing_sav, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
 end
 
 function readstat_begin_writing(writer, filetype::Val{:por}, io, row_count)
-    return ccall((:readstat_begin_writing_por, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, io, Cint(row_count))
+    return ccall((:readstat_begin_writing_por, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
 end
 
 function readstat_begin_writing(writer, filetype::Val{:sas7bdat}, io, row_count)
-    return ccall((:readstat_begin_writing_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, io, Cint(row_count))
+    return ccall((:readstat_begin_writing_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
 end
 
 function readstat_insert_double_value(writer, variable, item)
