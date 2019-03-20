@@ -256,16 +256,17 @@ function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename:
     retval == 0 ||  error("Error parsing $filename: $retval")
 end
 
-
-function handle_write!()
-
-end
+function handle_write!(data::Ptr, len::Int, ctx::Ptr)
+    io = unsafe_pointer_to_objref(ctx) # restore io
+    actual_data = unsafe_wrap(Array{Any}, data, len) # we may want to specify the type later
+    write(io, actual_data)
+ end
 
 function Writer(source; file_label="File Label")
     writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
     write_bytes = @cfunction(handle_write!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, ), parser, write_bytes)
-    ccall((:readstat_writer_set_file_label, libreadstat, Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
+    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, write_bytes)
+    ccall((:readstat_writer_set_file_label, libreadstat), Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
     return writer
 end
 
@@ -274,21 +275,25 @@ function write_data_file(filename::AbstractString, filetype::Val, io::IO, source
     fields = fieldnames(eltype(source))
     variables_array = []
 
-    for field in fields:
-        variable = ccall((:readstat_add_variable, libreadstat), Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), writer, String(field), READSTAT_TYPE_DOUBLE, 0); # TODO: know width
+    for field in fields
+        variable = ccall((:readstat_add_variable, libreadstat), 
+            Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), 
+            writer, String(field), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
         readstat_variable_set_label(variable, String(field))
         variables_array.push!(variable)
+    end
     
     variables = NamedTuple{(fields...,)}((variables...,)) # generate a NamedTuple for variables
 
     
-    if Base.IteratorSize(source) == Base.HasLength(): # TODO: what about HasShape
+    if Base.IteratorSize(source) == Base.HasLength() # TODO: what about HasShape
         row_count = length(q)
-    else: #fallback
+    else #fallback
         row_count = 0
         for _ in source
             row_count += 1
         end
+    end
 
     readstat_begin_writing(writer, filetype, io, row_count)
 
@@ -300,8 +305,8 @@ function write_data_file(filename::AbstractString, filetype::Val, io::IO, source
         readstat_end_row(writer);
     end
 
-    ccall((:readstat_end_writing, libreadstat), Int, (Ptr{Nothing}), writer)
-    ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing}), writer)
+    ccall((:readstat_end_writing, libreadstat), Int, (Ptr{Nothing},), writer)
+    ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing},), writer)
 end
 
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
