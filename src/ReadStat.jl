@@ -18,7 +18,7 @@ include(depsjl_path)
 using DataValues: DataValueVector
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, write_dta, write_sav, write_por, write_sas7bdat
 
 ##############################################################################
 ##
@@ -321,9 +321,9 @@ read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
 
-write_dta(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:dta), io, source)
-write_sav(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:sav), io, source)
-write_por(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:por), io, source)
-write_sas7bdat(filename::AbstractString, io::IO, source) = write_data_file(filename, Val(:sas7bdat), io, source)
+write_dta(filename::AbstractString, source) = write_data_file(filename, Val(:dta), source)
+write_sav(filename::AbstractString, source) = write_data_file(filename, Val(:sav), source)
+write_por(filename::AbstractString, source) = write_data_file(filename, Val(:por), source)
+write_sas7bdat(filename::AbstractString, source) = write_data_file(filename, Val(:sas7bdat), source)
 
 end #module ReadStat
