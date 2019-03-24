@@ -256,21 +256,29 @@ function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename:
     retval == 0 ||  error("Error parsing $filename: $retval")
 end
 
-function handle_write!(data::Ptr, len::Int, ctx::Ptr)
+function handle_write!(data::Ptr{UInt8}, len::Cint, ctx::Ptr)
     io = unsafe_pointer_to_objref(ctx) # restore io
-    actual_data = unsafe_wrap(Array{Any}, data, len) # we may want to specify the type later
+    actual_data = unsafe_wrap(Array{UInt8}, data, (len, )) # we may want to specify the type later
     write(io, actual_data)
+    return len
  end
 
 function Writer(source; file_label="File Label")
     writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
-    write_bytes = @cfunction(handle_write!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, write_bytes)
+    write_bytes = @cfunction(handle_write!, Cint, (Ptr{UInt8}, Cint, Ptr{Nothing}))
+    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, write_bytes)
     ccall((:readstat_writer_set_file_label, libreadstat), Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
     return writer
 end
 
-function write_data_file(filename::AbstractString, filetype::Val, io::IO, source)
+function write_data_file(filename::AbstractString, filetype::Val, source) 
+    io = open(filename, "w")
+    write_data_file(filetype::Val, io, source)
+    close(io)
+end
+
+
+function write_data_file(filetype::Val, io::IO, source)
     writer = Writer(source)
     fields = fieldnames(eltype(source))
     variables_array = []
@@ -279,15 +287,14 @@ function write_data_file(filename::AbstractString, filetype::Val, io::IO, source
         variable = ccall((:readstat_add_variable, libreadstat), 
             Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), 
             writer, String(field), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
-        readstat_variable_set_label(variable, String(field))
-        variables_array.push!(variable)
+        # readstat_variable_set_label(variable, String(field)) TODO: label for a variable
+        push!(variables_array, variable)
     end
     
-    variables = NamedTuple{(fields...,)}((variables...,)) # generate a NamedTuple for variables
+    variables = NamedTuple{(fields...,)}((variables_array...,)) # generate a NamedTuple for variables
 
-    
     if Base.IteratorSize(source) == Base.HasLength() # TODO: what about HasShape
-        row_count = length(q)
+        row_count = length(source)
     else #fallback
         row_count = 0
         for _ in source
