@@ -1,3 +1,7 @@
+# ReadStat.jl v1.0.0 Release Notes
+* Drop julia 0.7 support
+* Migrate to Project.toml
+
 # ReadStat.jl v0.4.1 Release Notes
 * Fix remaining julia 0.7/1.0 issues
 
