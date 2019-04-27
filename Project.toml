@@ -1,0 +1,21 @@
+name = "ReadStat"
+uuid = "d71aba96-b539-5138-91ee-935c3ee1374c"
+version = "1.0.0-DEV"
+
+[deps]
+BinaryProvider = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
+DataValues = "e7dc6d0d-1eca-5fa6-8ad6-5aecde8b7ea5"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+StringEncodings = "69024149-9ee7-55f6-a4c4-859efe599b68"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
+
+[compat]
+BinaryProvider = "≥ 0.4.2"
+DataValues = "≥ 0.4.4"
+StringEncodings = "≥ 0.3.1"
+julia = "1"
