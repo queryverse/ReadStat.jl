@@ -3,3 +3,4 @@ deps/build.log
 *.jl.*.cov
 *.jl.mem
 Manifest.toml
+.vscode
