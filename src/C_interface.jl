@@ -12,7 +12,7 @@ function readstat_get_file_format_version(metadata::Ptr{Nothing})
 end
 
 function readstat_get_row_count(metadata::Ptr{Nothing})
-    return ccall((:readstat_get_row_count, libreadstat), UInt, (Ptr{Nothing},), metadata)
+    return ccall((:readstat_get_row_count, libreadstat), Int, (Ptr{Nothing},), metadata)
 end
 
 function readstat_get_var_count(metadata::Ptr{Nothing})
@@ -69,4 +69,8 @@ end
 
 function readstat_parse(filename::String, type::Val{:sas7bdat}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
     return ccall((:readstat_parse_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+end
+
+function readstat_parse(filename::String, type::Val{:xport}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
+    return ccall((:readstat_parse_xport, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end

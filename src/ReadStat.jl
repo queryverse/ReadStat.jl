@@ -18,7 +18,7 @@ include(depsjl_path)
 using DataValues: DataValueVector
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport
 
 ##############################################################################
 ##
@@ -82,6 +82,8 @@ mutable struct ReadStatDataFrame
 end
 
 include("C_interface.jl")
+
+const READSTAT_NALLOC_ROWS = 100000
 
 ##############################################################################
 ##
@@ -154,7 +156,13 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     push!(ds.formats, get_format(variable))
     jtype = get_type(variable)
     push!(ds.types, jtype)
-    push!(ds.data, DataValueVector{jtype}(ds.rows))
+
+    if ds.rows < 0
+        push!(ds.data, DataValueVector{jtype}(READSTAT_NALLOC_ROWS))
+    else
+        push!(ds.data, DataValueVector{jtype}(ds.rows))
+    end
+
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
     push!(ds.alignments, get_alignment(variable))
@@ -182,6 +190,16 @@ function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     var_index = readstat_variable_get_index(variable)
+
+    nl = length(ds.data[var_index + 1])
+    if (obs_index + 1) >= nl
+        resize!(ds.data[var_index + 1], nl + READSTAT_NALLOC_ROWS)
+    end
+
+    if obs_index > ds.rows
+        ds.rows = obs_index + 1
+    end
+
     if !readstat_value_is_missing(value, variable)
         readfield!(ds.data[var_index + 1], obs_index + 1, value)
     end
@@ -232,6 +250,10 @@ function read_data_file(filename::AbstractString, filetype::Val)
     parser = Parser()
     # parse
     parse_data_file!(ds, parser, filename, filetype)
+    # Resize
+    for i in 1:length(ds.data)
+        resize!(ds.data[i], ds.rows)
+    end
     # return dataframe instead of ReadStatDataFrame
     return ds
 end
@@ -260,5 +282,6 @@ read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
+read_xport(filename::AbstractString) = read_data_file(filename, Val(:xport))
 
 end #module ReadStat
