@@ -18,7 +18,7 @@ include(depsjl_path)
 using DataValues: DataValueVector
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, write_dta, write_sav, write_por, write_sas7bdat
 
 ##############################################################################
 ##
@@ -248,7 +248,7 @@ function Parser()
     ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
     ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
-end  
+end
 
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
@@ -256,9 +256,74 @@ function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename:
     retval == 0 ||  error("Error parsing $filename: $retval")
 end
 
+function handle_write!(data::Ptr{UInt8}, len::Cint, ctx::Ptr)
+    io = unsafe_pointer_to_objref(ctx) # restore io
+    actual_data = unsafe_wrap(Array{UInt8}, data, (len, )) # we may want to specify the type later
+    write(io, actual_data)
+    return len
+ end
+
+function Writer(source; file_label="File Label")
+    writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
+    write_bytes = @cfunction(handle_write!, Cint, (Ptr{UInt8}, Cint, Ptr{Nothing}))
+    ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, write_bytes)
+    ccall((:readstat_writer_set_file_label, libreadstat), Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
+    return writer
+end
+
+function write_data_file(filename::AbstractString, filetype::Val, source) 
+    io = open(filename, "w")
+    write_data_file(filetype::Val, io, source)
+    close(io)
+end
+
+
+function write_data_file(filetype::Val, io::IO, source)
+    writer = Writer(source)
+    fields = fieldnames(eltype(source))
+    variables_array = []
+
+    for field in fields
+        variable = ccall((:readstat_add_variable, libreadstat), 
+            Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), 
+            writer, String(field), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
+        # readstat_variable_set_label(variable, String(field)) TODO: label for a variable
+        push!(variables_array, variable)
+    end
+    
+    variables = NamedTuple{(fields...,)}((variables_array...,)) # generate a NamedTuple for variables
+
+    if Base.IteratorSize(source) == Base.HasLength() # TODO: what about HasShape
+        row_count = length(source)
+    else #fallback
+        row_count = 0
+        for _ in source
+            row_count += 1
+        end
+    end
+
+    readstat_begin_writing(writer, filetype, io, row_count)
+
+    for row in source
+        readstat_begin_row(writer)
+        for field in fields
+            readstat_insert_double_value(writer, variables[field], row[field]) # TODO: more than double
+        end
+        readstat_end_row(writer);
+    end
+
+    ccall((:readstat_end_writing, libreadstat), Int, (Ptr{Nothing},), writer)
+    ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing},), writer)
+end
+
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
+
+write_dta(filename::AbstractString, source) = write_data_file(filename, Val(:dta), source)
+write_sav(filename::AbstractString, source) = write_data_file(filename, Val(:sav), source)
+write_por(filename::AbstractString, source) = write_data_file(filename, Val(:por), source)
+write_sas7bdat(filename::AbstractString, source) = write_data_file(filename, Val(:sas7bdat), source)
 
 end #module ReadStat
