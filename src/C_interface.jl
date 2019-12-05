@@ -52,7 +52,7 @@ function readstat_parser_free(parser::Ptr{Nothing})
 end
 
 function readstat_value_type(val::Value)
-    return ccall((:readstat_value_type, libreadstat), Cint, (Val,), val)
+    return ccall((:readstat_value_type, libreadstat), Cint, (Value,), val)
 end
 
 function readstat_parse(filename::String, type::Val{:dta}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
