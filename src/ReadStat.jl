@@ -69,10 +69,11 @@ mutable struct ReadStatDataFrame
     timestamp::DateTime
     format::Clong
     types_as_int::Vector{Cint}
+    hasmissings::Vector{Bool}
 
     ReadStatDataFrame() = 
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[])
+        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
 end
 
 include("C_interface.jl")
@@ -140,7 +141,9 @@ get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+
+    missing_count = readstat_variable_get_missing_ranges_count(variable)
 
     push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
     push!(ds.headers, get_name(variable))
@@ -149,7 +152,8 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     jtype = get_type(variable)
     push!(ds.types, jtype)
     push!(ds.types_as_int, readstat_variable_get_type(variable))
-    push!(ds.data, DataValueVector{jtype}(ds.rows))
+    push!(ds.hasmissings, missing_count > 0)
+    push!(ds.data, missing_count==0 ? Vector{jtype}(undef, ds.rows) : DataValueVector{jtype}(ds.rows))
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
     push!(ds.alignments, get_alignment(variable))
@@ -174,54 +178,73 @@ end
 as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
-                       value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
+                       value::Ptr{ReadStatValue}, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
-    var_index = readstat_variable_get_index(variable)
-    if !readstat_value_is_missing(value, variable)
-        if ds.types_as_int[var_index+1]==READSTAT_TYPE_DOUBLE
-            readfield!(ds.data[var_index + 1]::DataValueVector{Float64}, obs_index + 1, value)
-        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_INT32
-            readfield!(ds.data[var_index + 1]::DataValueVector{Int32}, obs_index + 1, value)
-        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_STRING
-            readfield!(ds.data[var_index + 1]::DataValueVector{String}, obs_index + 1, value)
-        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_CHAR
-            readfield!(ds.data[var_index + 1]::DataValueVector{Int8}, obs_index + 1, value)
-        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_INT16
-            readfield!(ds.data[var_index + 1]::DataValueVector{Int16}, obs_index + 1, value)
-        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_FLOAT
-            readfield!(ds.data[var_index + 1]::DataValueVector{Float32}, obs_index + 1, value)
+    var_index = readstat_variable_get_index(variable) + 1
+    data = ds.data
+    @inbounds type_as_int = ds.types_as_int[var_index]
+    @inbounds if ds.hasmissings[var_index]
+        if readstat_value_is_missing(value, variable)
+        elseif type_as_int==READSTAT_TYPE_DOUBLE
+            readfield!(data[var_index]::DataValueVector{Float64}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_INT32
+            readfield!(data[var_index]::DataValueVector{Int32}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_STRING
+            readfield!(data[var_index]::DataValueVector{String}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_CHAR
+            readfield!(data[var_index]::DataValueVector{Int8}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_INT16
+            readfield!(data[var_index]::DataValueVector{Int16}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_FLOAT
+            readfield!(data[var_index]::DataValueVector{Float32}, obs_index + 1, value)
         else        
-            readfield!(ds.data[var_index + 1], obs_index + 1, value)
+            readfield!(data[var_index], obs_index + 1, value)
+        end
+    else
+        if type_as_int==READSTAT_TYPE_DOUBLE
+            readfield!(data[var_index]::Vector{Float64}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_INT32
+            readfield!(data[var_index]::Vector{Int32}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_STRING
+            readfield!(data[var_index]::Vector{String}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_CHAR
+            readfield!(data[var_index]::Vector{Int8}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_INT16
+            readfield!(data[var_index]::Vector{Int16}, obs_index + 1, value)
+        elseif type_as_int==READSTAT_TYPE_FLOAT
+            readfield!(data[var_index]::Vector{Float32}, obs_index + 1, value)
+        else        
+            readfield!(data[var_index], obs_index + 1, value)
         end
     end
 
     return Cint(0)
 end
 
-function readfield!(dest::DataValueVector{String}, row, val::Value)
+function readfield!(dest::Union{DataValueVector{String}, Vector{String}}, row, val::Value)
     ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
     if ptr ≠ C_NULL
         @inbounds dest[row] = unsafe_string(ptr)
     end
 end
 
-function readfield!(dest::DataValueVector{Int8}, row, val::Value)
+function readfield!(dest::Union{DataValueVector{Int8}, Vector{Int8}}, row, val::Value)
     @inbounds dest[row] = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
 end
 
-function readfield!(dest::DataValueVector{Int16}, row, val::Value)
+function readfield!(dest::Union{DataValueVector{Int16}, Vector{Int16}}, row, val::Value)
     @inbounds dest[row] = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
 end
 
-function readfield!(dest::DataValueVector{Int32}, row, val::Value)
+function readfield!(dest::Union{DataValueVector{Int32}, Vector{Int32}}, row, val::Value)
     @inbounds dest[row] = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
 end
 
-function readfield!(dest::DataValueVector{Float64}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_double_value, libreadstat), Float64, (Value,), val)
+function readfield!(dest::Union{DataValueVector{Float64}, Vector{Float64}}, row, val::Ptr{Value})
+    @inbounds dest[row] = ccall((:readstat_double_value, libreadstat), Float64, (Ptr{Value},), val)
 end
 
-function readfield!(dest::DataValueVector{Float32}, row, val::Value)
+function readfield!(dest::Union{DataValueVector{Float32}, Vector{Float32}}, row, val::Value)
     @inbounds dest[row] = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
 end
 
@@ -250,7 +273,7 @@ function Parser()
     info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
     meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
     var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
-    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
+    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, Ptr{ReadStatValue}, Ptr{ReadStatDataFrame}))
     label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
     ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
     ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
