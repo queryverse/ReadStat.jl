@@ -68,10 +68,11 @@ mutable struct ReadStatDataFrame
     filelabel::String
     timestamp::DateTime
     format::Clong
+    types_as_int::Vector{Cint}
 
     ReadStatDataFrame() = 
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0)
+        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[])
 end
 
 include("C_interface.jl")
@@ -147,6 +148,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     push!(ds.formats, get_format(variable))
     jtype = get_type(variable)
     push!(ds.types, jtype)
+    push!(ds.types_as_int, readstat_variable_get_type(variable))
     push!(ds.data, DataValueVector{jtype}(ds.rows))
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
@@ -173,10 +175,24 @@ as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
     var_index = readstat_variable_get_index(variable)
     if !readstat_value_is_missing(value, variable)
-        readfield!(ds.data[var_index + 1], obs_index + 1, value)
+        if ds.types_as_int[var_index+1]==READSTAT_TYPE_DOUBLE
+            readfield!(ds.data[var_index + 1]::DataValueVector{Float64}, obs_index + 1, value)
+        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_INT32
+            readfield!(ds.data[var_index + 1]::DataValueVector{Int32}, obs_index + 1, value)
+        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_STRING
+            readfield!(ds.data[var_index + 1]::DataValueVector{String}, obs_index + 1, value)
+        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_CHAR
+            readfield!(ds.data[var_index + 1]::DataValueVector{Int8}, obs_index + 1, value)
+        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_INT16
+            readfield!(ds.data[var_index + 1]::DataValueVector{Int16}, obs_index + 1, value)
+        elseif ds.types_as_int[var_index+1]==READSTAT_TYPE_FLOAT
+            readfield!(ds.data[var_index + 1]::DataValueVector{Float32}, obs_index + 1, value)
+        else        
+            readfield!(ds.data[var_index + 1], obs_index + 1, value)
+        end
     end
 
     return Cint(0)
