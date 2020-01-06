@@ -19,8 +19,8 @@ function readstat_get_var_count(metadata::Ptr{Nothing})
     return ccall((:readstat_get_var_count, libreadstat), UInt, (Ptr{Nothing},), metadata)
 end
 
-function readstat_value_is_missing(value::Ptr{ReadStatValue}, variable::Ptr{Nothing})
-    return ccall((:readstat_value_is_missing, libreadstat), Bool, (Ptr{ReadStatValue},Ptr{Nothing}), value, variable)
+function readstat_value_is_missing(value::ReadStatValue, variable::Ptr{Nothing})
+    return ccall((:readstat_value_is_missing, libreadstat), Bool, (ReadStatValue,Ptr{Nothing}), value, variable)
 end
 
 function readstat_variable_get_index(variable::Ptr{Nothing})

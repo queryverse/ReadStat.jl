@@ -179,7 +179,7 @@ end
 as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
-                       value::Ptr{ReadStatValue}, ds_ptr::Ptr{ReadStatDataFrame})
+                       value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
     var_index = readstat_variable_get_index(variable) + 1
     data = ds.data
@@ -252,31 +252,31 @@ function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
     return Cint(0)
 end
 
-function readfield!(dest::DataValueVector{String}, row, val::Ptr{Value})
-    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Ptr{Value},), val)
+function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
+    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (ReadStatValue,), val)
     if ptr ≠ C_NULL
         @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
     end
 end
 
-function readfield!(dest::DataValueVector{Int8}, row, val::Ptr{Value})
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int8_value, libreadstat), Int8, (Ptr{Value},), val), row)
+function readfield!(dest::DataValueVector{Int8}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int8_value, libreadstat), Int8, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Int16}, row, val::Ptr{Value})
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int16_value, libreadstat), Int16, (Ptr{Value},), val), row)
+function readfield!(dest::DataValueVector{Int16}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int16_value, libreadstat), Int16, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Int32}, row, val::Ptr{Value})
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int32_value, libreadstat), Int32, (Ptr{Value},), val), row)
+function readfield!(dest::DataValueVector{Int32}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int32_value, libreadstat), Int32, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Float64}, row, val::Ptr{Value})
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_double_value, libreadstat), Float64, (Ptr{Value},), val), row)
+function readfield!(dest::DataValueVector{Float64}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_double_value, libreadstat), Float64, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Float32}, row, val::Ptr{Value})
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_float_value, libreadstat), Float32, (Ptr{Value},), val), row)
+function readfield!(dest::DataValueVector{Float32}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_float_value, libreadstat), Float32, (ReadStatValue,), val), row)
 end
 
 function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
@@ -304,7 +304,7 @@ function Parser()
     info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
     meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
     var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
-    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, Ptr{ReadStatValue}, Ptr{ReadStatDataFrame}))
+    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
     label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
     ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
     ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
