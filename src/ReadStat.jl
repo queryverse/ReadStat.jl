@@ -9,6 +9,7 @@ using ReadStat_jll
 ##############################################################################
 
 using DataValues: DataValueVector
+import DataValues
 using Dates
 
 export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
@@ -68,10 +69,12 @@ mutable struct ReadStatDataFrame
     filelabel::String
     timestamp::DateTime
     format::Clong
+    types_as_int::Vector{Cint}
+    hasmissings::Vector{Bool}
 
     ReadStatDataFrame() = 
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0)
+        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
 end
 
 include("C_interface.jl")
@@ -139,7 +142,9 @@ get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+
+    missing_count = readstat_variable_get_missing_ranges_count(variable)
 
     push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
     push!(ds.headers, get_name(variable))
@@ -147,7 +152,9 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     push!(ds.formats, get_format(variable))
     jtype = get_type(variable)
     push!(ds.types, jtype)
-    push!(ds.data, DataValueVector{jtype}(ds.rows))
+    push!(ds.types_as_int, readstat_variable_get_type(variable))
+    push!(ds.hasmissings, missing_count > 0)
+    push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, ds.rows), fill(false, ds.rows)))
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
     push!(ds.alignments, get_alignment(variable))
@@ -173,40 +180,103 @@ as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    var_index = readstat_variable_get_index(variable)
-    if !readstat_value_is_missing(value, variable)
-        readfield!(ds.data[var_index + 1], obs_index + 1, value)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+    var_index = readstat_variable_get_index(variable) + 1
+    data = ds.data
+    @inbounds type_as_int = ds.types_as_int[var_index]
+
+    ismissing = if @inbounds(ds.hasmissings[var_index])
+        readstat_value_is_missing(value, variable)
+    else
+        readstat_value_is_missing(value, C_NULL)
+    end
+
+    if type_as_int==READSTAT_TYPE_DOUBLE
+        col_float64 = data[var_index]::DataValueVector{Float64}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_float64, true, obs_index + 1)
+        else
+            readfield!(col_float64, obs_index + 1, value)
+        end
+    elseif type_as_int==READSTAT_TYPE_INT32
+        col_int32 = data[var_index]::DataValueVector{Int32}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_int32, true, obs_index + 1)
+        else
+            readfield!(col_int32, obs_index + 1, value)
+        end
+    elseif type_as_int==READSTAT_TYPE_STRING
+        col_string = data[var_index]::DataValueVector{String}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_string, true, obs_index + 1)
+        else
+            readfield!(col_string, obs_index + 1, value)
+        end
+    elseif type_as_int==READSTAT_TYPE_CHAR
+        col_int8 = data[var_index]::DataValueVector{Int8}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_int8, true, obs_index + 1)
+        else
+            readfield!(col_int8, obs_index + 1, value)
+        end
+    elseif type_as_int==READSTAT_TYPE_INT16
+        col_int16 = data[var_index]::DataValueVector{Int16}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_int16, true, obs_index + 1)
+        else
+            readfield!(col_int16, obs_index + 1, value)
+        end
+    elseif type_as_int==READSTAT_TYPE_FLOAT
+        col_float32 = data[var_index]::DataValueVector{Float32}
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_float32, true, obs_index + 1)
+        else
+            readfield!(col_float32, obs_index + 1, value)
+        end
+    else        
+        col_untyped = data[var_index]
+
+        if ismissing
+            DataValues.unsafe_setindex_isna!(col_untyped, true, obs_index + 1)
+        else
+            readfield!(col_untyped, obs_index + 1, value)
+        end
     end
 
     return Cint(0)
 end
 
-function readfield!(dest::DataValueVector{String}, row, val::Value)
-    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
+function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
+    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (ReadStatValue,), val)
     if ptr ≠ C_NULL
-        @inbounds dest[row] = unsafe_string(ptr)
+        @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
     end
 end
 
-function readfield!(dest::DataValueVector{Int8}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
+function readfield!(dest::DataValueVector{Int8}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int8_value, libreadstat), Int8, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Int16}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
+function readfield!(dest::DataValueVector{Int16}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int16_value, libreadstat), Int16, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Int32}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
+function readfield!(dest::DataValueVector{Int32}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int32_value, libreadstat), Int32, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Float64}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_double_value, libreadstat), Float64, (Value,), val)
+function readfield!(dest::DataValueVector{Float64}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_double_value, libreadstat), Float64, (ReadStatValue,), val), row)
 end
 
-function readfield!(dest::DataValueVector{Float32}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
+function readfield!(dest::DataValueVector{Float32}, row, val::ReadStatValue)
+    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_float_value, libreadstat), Float32, (ReadStatValue,), val), row)
 end
 
 function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})

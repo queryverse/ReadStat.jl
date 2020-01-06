@@ -70,3 +70,7 @@ end
 function readstat_parse(filename::String, type::Val{:sas7bdat}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
     return ccall((:readstat_parse_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end
+
+function readstat_variable_get_missing_ranges_count(variable::Ptr{Nothing})
+    return ccall((:readstat_variable_get_missing_ranges_count, libreadstat), Cint, (Ptr{Nothing},), variable)
+end
