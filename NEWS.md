@@ -1,3 +1,9 @@
+# ReadStat.jl v1.0.2 Release Notes
+* Fix a type instability
+
+# ReadStat.jl v1.0.1 Release Notes
+* Bugfix release
+
 # ReadStat.jl v1.0.0 Release Notes
 * Drop support for all Julia pre 1.3 versions
 * Migrate to Project.toml
