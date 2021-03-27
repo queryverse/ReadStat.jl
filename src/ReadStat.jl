@@ -12,7 +12,7 @@ using DataValues: DataValueVector
 import DataValues
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport
 
 ##############################################################################
 ##
@@ -72,7 +72,7 @@ mutable struct ReadStatDataFrame
     types_as_int::Vector{Cint}
     hasmissings::Vector{Bool}
 
-    ReadStatDataFrame() = 
+    ReadStatDataFrame() =
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
         String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
 end
@@ -139,11 +139,10 @@ get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
 get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
-function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
+function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
-
     missing_count = readstat_variable_get_missing_ranges_count(variable)
 
     push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
@@ -154,11 +153,16 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     push!(ds.types, jtype)
     push!(ds.types_as_int, readstat_variable_get_type(variable))
     push!(ds.hasmissings, missing_count > 0)
-    push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, ds.rows), fill(false, ds.rows)))
+    # SAS XPORT sets ds.rows == -1
+    if ds.rows >= 0
+        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, ds.rows), fill(false, ds.rows)))
+    else
+        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, 0), fill(false, 0)))
+    end
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
     push!(ds.alignments, get_alignment(variable))
-    
+
     return Cint(0)
 end
 
@@ -193,57 +197,78 @@ function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
 
     if type_as_int==READSTAT_TYPE_DOUBLE
         col_float64 = data[var_index]::DataValueVector{Float64}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_float64, true, obs_index + 1)
+            if obs_index < length(col_float64)
+                DataValues.unsafe_setindex_isna!(col_float64, true, obs_index + 1)
+            else
+                push!(col_float64, DataValues.NA)
+            end
         else
             readfield!(col_float64, obs_index + 1, value)
         end
     elseif type_as_int==READSTAT_TYPE_INT32
         col_int32 = data[var_index]::DataValueVector{Int32}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_int32, true, obs_index + 1)
+            if obs_index < length(col_int32)
+                DataValues.unsafe_setindex_isna!(col_int32, true, obs_index + 1)
+            else
+                push!(col_int32, DataValues.NA)
+            end
         else
             readfield!(col_int32, obs_index + 1, value)
         end
     elseif type_as_int==READSTAT_TYPE_STRING
         col_string = data[var_index]::DataValueVector{String}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_string, true, obs_index + 1)
+            if obs_index < length(col_string)
+                DataValues.unsafe_setindex_isna!(col_string, true, obs_index + 1)
+            else
+                push!(col_string, DataValues.NA)
+            end
         else
             readfield!(col_string, obs_index + 1, value)
         end
     elseif type_as_int==READSTAT_TYPE_CHAR
         col_int8 = data[var_index]::DataValueVector{Int8}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_int8, true, obs_index + 1)
+            if obs_index < length(col_int8)
+                DataValues.unsafe_setindex_isna!(col_int8, true, obs_index + 1)
+            else
+                push!(col_int8, DataValues.NA)
+            end
         else
             readfield!(col_int8, obs_index + 1, value)
         end
     elseif type_as_int==READSTAT_TYPE_INT16
         col_int16 = data[var_index]::DataValueVector{Int16}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_int16, true, obs_index + 1)
+            if obs_index < length(col_int16)
+                DataValues.unsafe_setindex_isna!(col_int16, true, obs_index + 1)
+            else
+                push!(col_int16, DataValues.NA)
+            end
         else
             readfield!(col_int16, obs_index + 1, value)
         end
     elseif type_as_int==READSTAT_TYPE_FLOAT
         col_float32 = data[var_index]::DataValueVector{Float32}
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_float32, true, obs_index + 1)
+            if obs_index < length(col_float32)
+                DataValues.unsafe_setindex_isna!(col_float32, true, obs_index + 1)
+            else
+                push!(col_float32, DataValues.NA)
+            end
         else
             readfield!(col_float32, obs_index + 1, value)
         end
-    else        
+    else
         col_untyped = data[var_index]
-
         if ismissing
-            DataValues.unsafe_setindex_isna!(col_untyped, true, obs_index + 1)
+            if obs_index < length(col_untyped)
+                DataValues.unsafe_setindex_isna!(col_untyped, true, obs_index + 1)
+            else
+                push!(col_untyped, DataValues.NA)
+            end
         else
             readfield!(col_untyped, obs_index + 1, value)
         end
@@ -254,29 +279,72 @@ end
 
 function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
     ptr = ccall((:readstat_string_value, libreadstat), Cstring, (ReadStatValue,), val)
-    if ptr ≠ C_NULL
-        @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
+
+    if row <= length(dest)
+        if ptr ≠ C_NULL
+            @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
+        end
+    elseif row == length(dest) + 1
+        _val = ptr ≠ C_NULL ? unsafe_string(ptr) : ""
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
     end
 end
 
 function readfield!(dest::DataValueVector{Int8}, row, val::ReadStatValue)
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int8_value, libreadstat), Int8, (ReadStatValue,), val), row)
+    _val = ccall((:readstat_int8_value, libreadstat), Int8, (ReadStatValue,), val)
+    if row <= length(dest)
+        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+    elseif row == length(dest) + 1
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
+    end
 end
 
 function readfield!(dest::DataValueVector{Int16}, row, val::ReadStatValue)
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int16_value, libreadstat), Int16, (ReadStatValue,), val), row)
+    _val = ccall((:readstat_int16_value, libreadstat), Int16, (ReadStatValue,), val)
+    if row <= length(dest)
+        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+    elseif row == length(dest) + 1
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
+    end
 end
 
 function readfield!(dest::DataValueVector{Int32}, row, val::ReadStatValue)
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_int32_value, libreadstat), Int32, (ReadStatValue,), val), row)
+    _val = ccall((:readstat_int32_value, libreadstat), Int32, (ReadStatValue,), val)
+    if row <= length(dest)
+        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+    elseif row == length(dest) + 1
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
+    end
 end
 
 function readfield!(dest::DataValueVector{Float64}, row, val::ReadStatValue)
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_double_value, libreadstat), Float64, (ReadStatValue,), val), row)
+    _val = ccall((:readstat_double_value, libreadstat), Float64, (ReadStatValue,), val)
+    if row <= length(dest)
+        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+    elseif row == length(dest) + 1
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
+    end
 end
 
 function readfield!(dest::DataValueVector{Float32}, row, val::ReadStatValue)
-    @inbounds DataValues.unsafe_setindex_value!(dest, ccall((:readstat_float_value, libreadstat), Float32, (ReadStatValue,), val), row)
+    _val = ccall((:readstat_float_value, libreadstat), Float32, (ReadStatValue,), val)
+    if row <= length(dest)
+        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+    elseif row == length(dest) + 1
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
+    end
 end
 
 function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
@@ -284,7 +352,7 @@ function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, 
     ds = unsafe_pointer_to_objref(ds_ptr)
     dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
     dict[as_native(value)] = unsafe_string(label)
-    
+
     return Cint(0)
 end
 
@@ -311,7 +379,7 @@ function Parser()
     ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
     ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
-end  
+end
 
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
@@ -323,5 +391,6 @@ read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
+read_xport(filename::AbstractString) = read_data_file(filename, Val(:xport))
 
 end #module ReadStat
