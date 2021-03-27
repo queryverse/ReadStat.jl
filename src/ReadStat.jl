@@ -114,9 +114,7 @@ function get_format(var::Ptr{Nothing})
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_type(variable::Ptr{Nothing})
-    data_type = readstat_variable_get_type(variable)
-
+function get_type(data_type::Cint)
     if data_type == READSTAT_TYPE_STRING
         return String
     elseif data_type == READSTAT_TYPE_CHAR
@@ -132,6 +130,7 @@ function get_type(variable::Ptr{Nothing})
     end
     return Nothing
 end
+get_type(variable::Ptr{Nothing}) = get_type(readstat_variable_get_type(variable))
 
 get_storagewidth(variable::Ptr{Nothing}) = readstat_variable_get_storage_width(variable)
 
@@ -195,83 +194,17 @@ function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
         readstat_value_is_missing(value, C_NULL)
     end
 
-    if type_as_int==READSTAT_TYPE_DOUBLE
-        col_float64 = data[var_index]::DataValueVector{Float64}
-        if ismissing
-            if obs_index < length(col_float64)
-                DataValues.unsafe_setindex_isna!(col_float64, true, obs_index + 1)
-            else
-                push!(col_float64, DataValues.NA)
-            end
+    col = data[var_index]
+    @assert eltype(eltype(col)) == get_type(type_as_int)
+
+    if ismissing
+        if obs_index < length(col)
+            DataValues.unsafe_setindex_isna!(col, true, obs_index + 1)
         else
-            readfield!(col_float64, obs_index + 1, value)
-        end
-    elseif type_as_int==READSTAT_TYPE_INT32
-        col_int32 = data[var_index]::DataValueVector{Int32}
-        if ismissing
-            if obs_index < length(col_int32)
-                DataValues.unsafe_setindex_isna!(col_int32, true, obs_index + 1)
-            else
-                push!(col_int32, DataValues.NA)
-            end
-        else
-            readfield!(col_int32, obs_index + 1, value)
-        end
-    elseif type_as_int==READSTAT_TYPE_STRING
-        col_string = data[var_index]::DataValueVector{String}
-        if ismissing
-            if obs_index < length(col_string)
-                DataValues.unsafe_setindex_isna!(col_string, true, obs_index + 1)
-            else
-                push!(col_string, DataValues.NA)
-            end
-        else
-            readfield!(col_string, obs_index + 1, value)
-        end
-    elseif type_as_int==READSTAT_TYPE_CHAR
-        col_int8 = data[var_index]::DataValueVector{Int8}
-        if ismissing
-            if obs_index < length(col_int8)
-                DataValues.unsafe_setindex_isna!(col_int8, true, obs_index + 1)
-            else
-                push!(col_int8, DataValues.NA)
-            end
-        else
-            readfield!(col_int8, obs_index + 1, value)
-        end
-    elseif type_as_int==READSTAT_TYPE_INT16
-        col_int16 = data[var_index]::DataValueVector{Int16}
-        if ismissing
-            if obs_index < length(col_int16)
-                DataValues.unsafe_setindex_isna!(col_int16, true, obs_index + 1)
-            else
-                push!(col_int16, DataValues.NA)
-            end
-        else
-            readfield!(col_int16, obs_index + 1, value)
-        end
-    elseif type_as_int==READSTAT_TYPE_FLOAT
-        col_float32 = data[var_index]::DataValueVector{Float32}
-        if ismissing
-            if obs_index < length(col_float32)
-                DataValues.unsafe_setindex_isna!(col_float32, true, obs_index + 1)
-            else
-                push!(col_float32, DataValues.NA)
-            end
-        else
-            readfield!(col_float32, obs_index + 1, value)
+            push!(col, DataValues.NA)
         end
     else
-        col_untyped = data[var_index]
-        if ismissing
-            if obs_index < length(col_untyped)
-                DataValues.unsafe_setindex_isna!(col_untyped, true, obs_index + 1)
-            else
-                push!(col_untyped, DataValues.NA)
-            end
-        else
-            readfield!(col_untyped, obs_index + 1, value)
-        end
+        readfield!(col, obs_index + 1, value)
     end
 
     return Cint(0)
@@ -292,58 +225,21 @@ function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
     end
 end
 
-function readfield!(dest::DataValueVector{Int8}, row, val::ReadStatValue)
-    _val = ccall((:readstat_int8_value, libreadstat), Int8, (ReadStatValue,), val)
-    if row <= length(dest)
-        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-    elseif row == length(dest) + 1
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
-    end
-end
-
-function readfield!(dest::DataValueVector{Int16}, row, val::ReadStatValue)
-    _val = ccall((:readstat_int16_value, libreadstat), Int16, (ReadStatValue,), val)
-    if row <= length(dest)
-        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-    elseif row == length(dest) + 1
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
-    end
-end
-
-function readfield!(dest::DataValueVector{Int32}, row, val::ReadStatValue)
-    _val = ccall((:readstat_int32_value, libreadstat), Int32, (ReadStatValue,), val)
-    if row <= length(dest)
-        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-    elseif row == length(dest) + 1
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
-    end
-end
-
-function readfield!(dest::DataValueVector{Float64}, row, val::ReadStatValue)
-    _val = ccall((:readstat_double_value, libreadstat), Float64, (ReadStatValue,), val)
-    if row <= length(dest)
-        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-    elseif row == length(dest) + 1
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
-    end
-end
-
-function readfield!(dest::DataValueVector{Float32}, row, val::ReadStatValue)
-    _val = ccall((:readstat_float_value, libreadstat), Float32, (ReadStatValue,), val)
-    if row <= length(dest)
-        @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-    elseif row == length(dest) + 1
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
+for (j_type, rs_name) in (
+    (Int8,    :readstat_int8_value),
+    (Int16,   :readstat_int16_value),
+    (Int32,   :readstat_int32_value),
+    (Float32, :readstat_float_value),
+    (Float64, :readstat_double_value))
+    @eval function readfield!(dest::DataValueVector{$j_type}, row, val::ReadStatValue)
+        _val = ccall(($(QuoteNode(rs_name)), libreadstat), $j_type, (ReadStatValue,), val)
+        if row <= length(dest)
+            @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+        elseif row == length(dest) + 1
+            DataValues.push!(dest, _val)
+        else
+            throw(ArgumentError("illegal row index: $row"))
+        end
     end
 end
 
