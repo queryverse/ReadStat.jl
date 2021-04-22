@@ -1,3 +1,6 @@
+# ReadStat.jl v1.1.0 Release Notes
+* Add support for SAS XPORT
+
 # ReadStat.jl v1.0.2 Release Notes
 * Fix a type instability
 
