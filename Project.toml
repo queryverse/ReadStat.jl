@@ -1,6 +1,6 @@
 name = "ReadStat"
 uuid = "d71aba96-b539-5138-91ee-935c3ee1374c"
-version = "1.1.0"
+version = "1.1.1-DEV"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
