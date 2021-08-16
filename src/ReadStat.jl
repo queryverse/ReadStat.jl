@@ -277,10 +277,14 @@ function Parser()
     return parser
 end
 
+function error_message(retval::Integer)
+    unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
+end
+
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
     readstat_parser_free(parser)
-    retval == 0 ||  error("Error parsing $filename: $retval")
+    retval == 0 ||  error("Error parsing $filename: $(error_message(retval))")
 end
 
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
