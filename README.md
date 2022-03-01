@@ -26,6 +26,8 @@ read_por("/path/to/something.por")
 read_sav("/path/to/something.sav")
 
 read_sas7bdat("/path/to/something.sas7bdat")
+
+read_xport("path/to/something.xpt")
 ```
 
 ## Installation
