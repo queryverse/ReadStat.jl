@@ -10,7 +10,7 @@
 ReadStat.jl: Read files from Stata, SPSS, and SAS
 --
 
-The ReadStat.jl Julia package uses the [ReadStat](https://github.com/WizardMac/ReadStat) C library to parse binary and transport files from Stata, SPSS and SAS. All functions return a tuple, with the first element an array of columns and the second element a vector of column names.
+The ReadStat.jl Julia package uses the [ReadStat](https://github.com/WizardMac/ReadStat) C library to parse binary and transport files from Stata, SPSS and SAS. All functions return a `ReadStatDataFrame` whose fields hold the various informations contained in the passed file (column names, column data, labels, formats...).
 
 For integration with packages like [DataFrames.jl](https://github.com/JuliaData/DataFrames.jl) you should use the [StatFiles.jl](https://github.com/queryverse/StatFiles.jl) package.
 
