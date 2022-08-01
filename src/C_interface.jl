@@ -111,3 +111,27 @@ end
 function readstat_insert_double_value(writer, variable, value)
     return ccall((:readstat_insert_double_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cdouble), writer, variable, value)
 end
+
+function readstat_insert_float_value(writer, variable, value)
+    return ccall((:readstat_insert_float_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cfloat), writer, variable, value)
+end
+
+function readstat_insert_int32_value(writer, variable, value)
+    return ccall((:readstat_insert_int32_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, variable, value)
+end
+
+function readstat_insert_int16_value(writer, variable, value)
+    return ccall((:readstat_insert_int16_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cshort), writer, variable, value)
+end
+
+function readstat_insert_int8_value(writer, variable, value)
+    return ccall((:readstat_insert_int8_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cchar), writer, variable, value)
+end
+
+function readstat_insert_string_value(writer, variable, value)
+    return ccall((:readstat_insert_string_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Ptr{Cstring}), writer, variable, value)
+end
+
+function readstat_insert_missing_value(writer, variable)
+    return ccall((:readstat_insert_missing_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, variable)
+end
