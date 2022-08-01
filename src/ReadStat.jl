@@ -11,8 +11,9 @@ using ReadStat_jll
 using DataValues: DataValueVector
 import DataValues
 using Dates
+import Tables
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport, write_dta, write_sav, write_por, write_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport, write_dta, write_sav, write_por, write_sas7bdat, write_xport
 
 ##############################################################################
 ##
@@ -315,34 +316,24 @@ end
 
 function write_data_file(filetype::Val, io::IO, source)
     writer = Writer(source)
-    fields = fieldnames(eltype(source))
+
+    rows = Tables.rows(source)
+    schema = Tables.schema(rows)
     variables_array = []
 
-    for field in fields
-        variable = ccall((:readstat_add_variable, libreadstat), 
+    variables_array = map(Tables.columnnames(source)) do column_name
+        return ccall((:readstat_add_variable, libreadstat), 
             Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), 
-            writer, String(field), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
+            writer, String(column_name), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
         # readstat_variable_set_label(variable, String(field)) TODO: label for a variable
-        push!(variables_array, variable)
     end
     
-    variables = NamedTuple{(fields...,)}((variables_array...,)) # generate a NamedTuple for variables
+    readstat_begin_writing(writer, filetype, io, length(rows))
 
-    if Base.IteratorSize(source) == Base.HasLength() # TODO: what about HasShape
-        row_count = length(source)
-    else #fallback
-        row_count = 0
-        for _ in source
-            row_count += 1
-        end
-    end
-
-    readstat_begin_writing(writer, filetype, io, row_count)
-
-    for row in source
+    for row in rows
         readstat_begin_row(writer)
-        for field in fields
-            readstat_insert_double_value(writer, variables[field], row[field]) # TODO: more than double
+        Tables.eachcolumn(schema, row) do val, i, name
+            insert_value!(writer, variables_array[i], val)
         end
         readstat_end_row(writer);
     end
@@ -350,6 +341,8 @@ function write_data_file(filetype::Val, io::IO, source)
     ccall((:readstat_end_writing, libreadstat), Int, (Ptr{Nothing},), writer)
     ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing},), writer)
 end
+
+insert_value!(writer, variable, value::Float64) = readstat_insert_double_value(writer, variable, value)
 
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
