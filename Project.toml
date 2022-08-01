@@ -3,17 +3,18 @@ uuid = "d71aba96-b539-5138-91ee-935c3ee1374c"
 version = "1.1.2-DEV"
 
 [deps]
-Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DataValues = "e7dc6d0d-1eca-5fa6-8ad6-5aecde8b7ea5"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 ReadStat_jll = "a4dc8951-f1cc-5499-9034-9ec1c3e64557"
+Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
+
+[compat]
+DataValues = "0.4.13"
+ReadStat_jll = "1.1.1"
+julia = "1.3"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[compat]
-julia = "1.3"
-DataValues = "0.4.13"
-ReadStat_jll = "1.1.1"
 
 [targets]
 test = ["Test"]
