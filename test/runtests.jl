@@ -28,8 +28,6 @@ mkdir(testdir)
             @test data[4] == DataValueArray{Int16}([2, 7, NA])
             @test data[5] == DataValueArray{Int8}([2, 7., NA])
             @test data[6] == DataValueArray{String}(["2", "7", ""])
-
-            @test rsdf.types == [Float32, Float64, Int32, Int16, Int8, String]
         end
 
         @testset "Writing" begin
@@ -39,7 +37,7 @@ mkdir(testdir)
                 vint32 = [Int32(2), Int32(7), missing],
                 vint16 = [Int16(2), Int16(7), missing],
                 vint8 = [Int8(2), Int8(7), missing],
-                vstring = ["2", "7", ""],
+                vstring = ["2", "7", missing],
             )
             filepath = joinpath(testdir, "testwrite.$ext")
             writer(filepath, data)
@@ -47,10 +45,11 @@ mkdir(testdir)
             data_read = rsdf.data
             @test length(data_read) == length(data)
             @test rsdf.headers == collect(keys(data))
-            @test rsdf.types == [Float64, Float32, Int32, Int16, Int8, String]
 
-            same_value(a::DataValue, b) = a.hasvalue ? get(a) === b : b === missing
-            same_value(a::DataValue{String}, b::String) = a.hasvalue && get(a) == b
+            same_value(a::DataValue, b) = a.hasvalue && get(a) == b
+            same_value(a::DataValue, b::Missing) = !a.hasvalue
+            # missing String appears to be read back in as the empty string ""
+            same_value(a::DataValue{String}, b::Missing) = a.hasvalue && get(a) == ""
         
             @test all(zip(data_read, values(data))) do (col_read, col)
                 all(Base.splat(same_value), zip(col_read, col))
