@@ -276,13 +276,10 @@ function Parser()
     ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
 end
-<<<<<<< HEAD
-=======
 
 function error_message(retval::Integer)
     unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
 end
->>>>>>> master
 
 function error_message(retval::Integer)
     unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
