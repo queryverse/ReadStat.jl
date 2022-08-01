@@ -315,6 +315,9 @@ function write_data_file(filetype::Val, io::IO, source)
 
     rows = Tables.rows(source)
     schema = Tables.schema(rows)
+    if schema === nothing
+        error("Could not determine table schema for data source.")
+    end
     variables_array = []
 
     variables_array = map(schema.names, schema.types) do column_name, column_type
