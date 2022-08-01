@@ -4,3 +4,4 @@ deps/build.log
 *.jl.mem
 Manifest.toml
 .vscode
+test/write_tests/
