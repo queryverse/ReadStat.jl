@@ -104,6 +104,10 @@ function readstat_begin_writing(writer, filetype::Val{:sas7bdat}, io, row_count)
     return ccall((:readstat_begin_writing_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
 end
 
+function readstat_begin_writing(writer, filetype::Val{:xport}, io, row_count)
+    return ccall((:readstat_begin_writing_xport, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cint), writer, pointer_from_objref(io), Cint(row_count))
+end
+
 function readstat_insert_double_value(writer, variable, item)
     return ccall((:readstat_insert_double_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Any), writer, variable, item)
 end
