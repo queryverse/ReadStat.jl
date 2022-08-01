@@ -1,13 +1,6 @@
 module ReadStat
 
-import StringEncodings
-
-# Load libreadstat from our deps.jl
-const depsjl_path = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
-if !isfile(depsjl_path)
-    error("ReadStat not installed properly, run Pkg.build(\"ReadStat\"), restart Julia and try again")
-end
-include(depsjl_path)
+using ReadStat_jll
 
 ##############################################################################
 ##
@@ -16,9 +9,10 @@ include(depsjl_path)
 ##############################################################################
 
 using DataValues: DataValueVector
+import DataValues
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, write_dta, write_sav, write_por, write_sas7bdat
+export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport, write_dta, write_sav, write_por, write_sas7bdat
 
 ##############################################################################
 ##
@@ -75,10 +69,12 @@ mutable struct ReadStatDataFrame
     filelabel::String
     timestamp::DateTime
     format::Clong
+    types_as_int::Vector{Cint}
+    hasmissings::Vector{Bool}
 
-    ReadStatDataFrame() = 
+    ReadStatDataFrame() =
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0)
+        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
 end
 
 include("C_interface.jl")
@@ -118,9 +114,7 @@ function get_format(var::Ptr{Nothing})
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_type(variable::Ptr{Nothing})
-    data_type = readstat_variable_get_type(variable)
-
+function get_type(data_type::Cint)
     if data_type == READSTAT_TYPE_STRING
         return String
     elseif data_type == READSTAT_TYPE_CHAR
@@ -136,6 +130,7 @@ function get_type(variable::Ptr{Nothing})
     end
     return Nothing
 end
+get_type(variable::Ptr{Nothing}) = get_type(readstat_variable_get_type(variable))
 
 get_storagewidth(variable::Ptr{Nothing}) = readstat_variable_get_storage_width(variable)
 
@@ -143,10 +138,11 @@ get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
 get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
-function handle_variable!(var_index::Cint, variable::Ptr{Nothing}, 
+function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+    missing_count = readstat_variable_get_missing_ranges_count(variable)
 
     push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
     push!(ds.headers, get_name(variable))
@@ -154,11 +150,18 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     push!(ds.formats, get_format(variable))
     jtype = get_type(variable)
     push!(ds.types, jtype)
-    push!(ds.data, DataValueVector{jtype}(ds.rows))
+    push!(ds.types_as_int, readstat_variable_get_type(variable))
+    push!(ds.hasmissings, missing_count > 0)
+    # SAS XPORT sets ds.rows == -1
+    if ds.rows >= 0
+        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, ds.rows), fill(false, ds.rows)))
+    else
+        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, 0), fill(false, 0)))
+    end
     push!(ds.storagewidths, get_storagewidth(variable))
     push!(ds.measures, get_measure(variable))
     push!(ds.alignments, get_alignment(variable))
-    
+
     return Cint(0)
 end
 
@@ -180,40 +183,64 @@ as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
                        value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    var_index = readstat_variable_get_index(variable)
-    if !readstat_value_is_missing(value, variable)
-        readfield!(ds.data[var_index + 1], obs_index + 1, value)
+    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
+    var_index = readstat_variable_get_index(variable) + 1
+    data = ds.data
+    @inbounds type_as_int = ds.types_as_int[var_index]
+
+    ismissing = if @inbounds(ds.hasmissings[var_index])
+        readstat_value_is_missing(value, variable)
+    else
+        readstat_value_is_missing(value, C_NULL)
+    end
+
+    col = data[var_index]
+    @assert eltype(eltype(col)) == get_type(type_as_int)
+
+    if ismissing
+        if obs_index < length(col)
+            DataValues.unsafe_setindex_isna!(col, true, obs_index + 1)
+        else
+            push!(col, DataValues.NA)
+        end
+    else
+        readfield!(col, obs_index + 1, value)
     end
 
     return Cint(0)
 end
 
-function readfield!(dest::DataValueVector{String}, row, val::Value)
-    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
-    if ptr ≠ C_NULL
-        @inbounds dest[row] = unsafe_string(ptr)
+function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
+    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (ReadStatValue,), val)
+
+    if row <= length(dest)
+        if ptr ≠ C_NULL
+            @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
+        end
+    elseif row == length(dest) + 1
+        _val = ptr ≠ C_NULL ? unsafe_string(ptr) : ""
+        DataValues.push!(dest, _val)
+    else
+        throw(ArgumentError("illegal row index: $row"))
     end
 end
 
-function readfield!(dest::DataValueVector{Int8}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
-end
-
-function readfield!(dest::DataValueVector{Int16}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
-end
-
-function readfield!(dest::DataValueVector{Int32}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
-end
-
-function readfield!(dest::DataValueVector{Float64}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_double_value, libreadstat), Float64, (Value,), val)
-end
-
-function readfield!(dest::DataValueVector{Float32}, row, val::Value)
-    @inbounds dest[row] = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
+for (j_type, rs_name) in (
+    (Int8,    :readstat_int8_value),
+    (Int16,   :readstat_int16_value),
+    (Int32,   :readstat_int32_value),
+    (Float32, :readstat_float_value),
+    (Float64, :readstat_double_value))
+    @eval function readfield!(dest::DataValueVector{$j_type}, row, val::ReadStatValue)
+        _val = ccall(($(QuoteNode(rs_name)), libreadstat), $j_type, (ReadStatValue,), val)
+        if row <= length(dest)
+            @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
+        elseif row == length(dest) + 1
+            DataValues.push!(dest, _val)
+        else
+            throw(ArgumentError("illegal row index: $row"))
+        end
+    end
 end
 
 function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
@@ -221,7 +248,7 @@ function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, 
     ds = unsafe_pointer_to_objref(ds_ptr)
     dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
     dict[as_native(value)] = unsafe_string(label)
-    
+
     return Cint(0)
 end
 
@@ -249,11 +276,22 @@ function Parser()
     ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
 end
+<<<<<<< HEAD
+=======
+
+function error_message(retval::Integer)
+    unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
+end
+>>>>>>> master
+
+function error_message(retval::Integer)
+    unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
+end
 
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
     readstat_parser_free(parser)
-    retval == 0 ||  error("Error parsing $filename: $retval")
+    retval == 0 ||  error("Error parsing $filename: $(error_message(retval))")
 end
 
 function handle_write!(data::Ptr{UInt8}, len::Cint, ctx::Ptr)
@@ -320,6 +358,7 @@ read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
 read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
+read_xport(filename::AbstractString) = read_data_file(filename, Val(:xport))
 
 write_dta(filename::AbstractString, source) = write_data_file(filename, Val(:dta), source)
 write_sav(filename::AbstractString, source) = write_data_file(filename, Val(:sav), source)

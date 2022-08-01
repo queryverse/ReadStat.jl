@@ -8,19 +8,19 @@ function readstat_get_modified_time(metadata::Ptr{Nothing})
 end
 
 function readstat_get_file_format_version(metadata::Ptr{Nothing})
-    return ccall((:readstat_get_file_format_version, libreadstat), UInt, (Ptr{Nothing},), metadata)
+    return ccall((:readstat_get_file_format_version, libreadstat), Cint, (Ptr{Nothing},), metadata)
 end
 
 function readstat_get_row_count(metadata::Ptr{Nothing})
-    return ccall((:readstat_get_row_count, libreadstat), UInt, (Ptr{Nothing},), metadata)
+    return ccall((:readstat_get_row_count, libreadstat), Cint, (Ptr{Nothing},), metadata)
 end
 
 function readstat_get_var_count(metadata::Ptr{Nothing})
-    return ccall((:readstat_get_var_count, libreadstat), UInt, (Ptr{Nothing},), metadata)
+    return ccall((:readstat_get_var_count, libreadstat), Cint, (Ptr{Nothing},), metadata)
 end
 
 function readstat_value_is_missing(value::ReadStatValue, variable::Ptr{Nothing})
-    return ccall((:readstat_value_is_missing, libreadstat), Bool, (ReadStatValue,Ptr{Nothing}), value, variable)
+    return Bool(ccall((:readstat_value_is_missing, libreadstat), Cint, (ReadStatValue, Ptr{Nothing}), value, variable))
 end
 
 function readstat_variable_get_index(variable::Ptr{Nothing})
@@ -52,24 +52,33 @@ function readstat_parser_free(parser::Ptr{Nothing})
 end
 
 function readstat_value_type(val::Value)
-    return ccall((:readstat_value_type, libreadstat), Cint, (Val,), val)
+    return ccall((:readstat_value_type, libreadstat), Cint, (Value,), val)
 end
 
 function readstat_parse(filename::String, type::Val{:dta}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
-    return ccall((:readstat_parse_dta, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+    return ccall((:readstat_parse_dta, libreadstat), Cint, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end
 
 function readstat_parse(filename::String, type::Val{:sav}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
-    return ccall((:readstat_parse_sav, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+    return ccall((:readstat_parse_sav, libreadstat), Cint, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end
 
 function readstat_parse(filename::String, type::Val{:por}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
-    return ccall((:readstat_parse_por, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+    return ccall((:readstat_parse_por, libreadstat), Cint, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end
 
 function readstat_parse(filename::String, type::Val{:sas7bdat}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
-    return ccall((:readstat_parse_sas7bdat, libreadstat), Int, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+    return ccall((:readstat_parse_sas7bdat, libreadstat), Cint, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
 end
+
+function readstat_parse(filename::String, type::Val{:xport}, parser::Ptr{Nothing}, ds::ReadStatDataFrame)
+    return ccall((:readstat_parse_xport, libreadstat), Cint, (Ptr{Nothing}, Cstring, Any), parser, string(filename), ds)
+end
+
+function readstat_variable_get_missing_ranges_count(variable::Ptr{Nothing})
+    return ccall((:readstat_variable_get_missing_ranges_count, libreadstat), Cint, (Ptr{Nothing},), variable)
+end
+
 
 function readstat_begin_row(writer)
     return ccall((:readstat_begin_row, libreadstat), Int, (Ptr{Nothing},), writer)
