@@ -64,5 +64,13 @@ mkdir(testdir)
             data_read = rsdf.data
             @test_broken get(data_read[1][1]) == "a" ^ 2046
         end
+
+        @testset "File metadata" begin
+            data = (a = Int32[1, 2, 3],)
+            filepath = joinpath(testdir, "testwrite_file_metadata.$ext")
+            writer(filepath, data; filelabel = "Test label")
+            rsdf = reader(filepath)
+            @test rsdf.filelabel == "Test label"
+        end
     end
 end

@@ -295,11 +295,11 @@ function handle_write!(data::Ptr{UInt8}, len::Cint, ctx::Ptr)
     return len
  end
 
-function Writer(; file_label)
+function Writer(; filelabel)
     writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
     write_bytes = @cfunction(handle_write!, Cint, (Ptr{UInt8}, Cint, Ptr{Nothing}))
     ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, write_bytes)
-    ccall((:readstat_writer_set_file_label, libreadstat), Cvoid, (Ptr{Nothing}, Cstring), writer, file_label)
+    ccall((:readstat_writer_set_file_label, libreadstat), Cvoid, (Ptr{Nothing}, Cstring), writer, filelabel)
     return writer
 end
 
@@ -310,8 +310,8 @@ function write_data_file(filename::AbstractString, filetype::Val, source; kwargs
 end
 
 
-function write_data_file(filetype::Val, io::IO, source; file_label = "")
-    writer = Writer(; file_label = file_label)
+function write_data_file(filetype::Val, io::IO, source; filelabel = "")
+    writer = Writer(; filelabel = filelabel)
 
     rows = Tables.rows(source)
     schema = Tables.schema(rows)
