@@ -282,10 +282,6 @@ function error_message(retval::Integer)
     unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
 end
 
-function error_message(retval::Integer)
-    unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
-end
-
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
     readstat_parser_free(parser)
