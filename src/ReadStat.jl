@@ -295,7 +295,7 @@ function handle_write!(data::Ptr{UInt8}, len::Cint, ctx::Ptr)
     return len
  end
 
-function Writer(source; file_label="File Label")
+function Writer(; file_label)
     writer = ccall((:readstat_writer_init, libreadstat), Ptr{Nothing}, ())
     write_bytes = @cfunction(handle_write!, Cint, (Ptr{UInt8}, Cint, Ptr{Nothing}))
     ccall((:readstat_set_data_writer, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, write_bytes)
@@ -303,15 +303,15 @@ function Writer(source; file_label="File Label")
     return writer
 end
 
-function write_data_file(filename::AbstractString, filetype::Val, source) 
+function write_data_file(filename::AbstractString, filetype::Val, source; kwargs...) 
     io = open(filename, "w")
-    write_data_file(filetype::Val, io, source)
+    write_data_file(filetype::Val, io, source; kwargs...)
     close(io)
 end
 
 
-function write_data_file(filetype::Val, io::IO, source)
-    writer = Writer(source)
+function write_data_file(filetype::Val, io::IO, source; file_label = "")
+    writer = Writer(; file_label = file_label)
 
     rows = Tables.rows(source)
     schema = Tables.schema(rows)
@@ -326,8 +326,6 @@ function write_data_file(filetype::Val, io::IO, source)
         # readstat_variable_set_label(variable, String(field)) TODO: label for a variable
     end
 
-
-    
     readstat_begin_writing(writer, filetype, io, length(rows))
 
     for row in rows
@@ -376,10 +374,10 @@ read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
 read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
 read_xport(filename::AbstractString) = read_data_file(filename, Val(:xport))
 
-write_dta(filename::AbstractString, source) = write_data_file(filename, Val(:dta), source)
-write_sav(filename::AbstractString, source) = write_data_file(filename, Val(:sav), source)
-write_por(filename::AbstractString, source) = write_data_file(filename, Val(:por), source)
-write_sas7bdat(filename::AbstractString, source) = write_data_file(filename, Val(:sas7bdat), source)
-write_xport(filename::AbstractString, source) = write_data_file(filename, Val(:xport), source)
+write_dta(filename::AbstractString, source; kwargs...) = write_data_file(filename, Val(:dta), source; kwargs...)
+write_sav(filename::AbstractString, source; kwargs...) = write_data_file(filename, Val(:sav), source; kwargs...)
+write_por(filename::AbstractString, source; kwargs...) = write_data_file(filename, Val(:por), source; kwargs...)
+write_sas7bdat(filename::AbstractString, source; kwargs...) = write_data_file(filename, Val(:sas7bdat), source; kwargs...)
+write_xport(filename::AbstractString, source; kwargs...) = write_data_file(filename, Val(:xport), source; kwargs...)
 
 end #module ReadStat
