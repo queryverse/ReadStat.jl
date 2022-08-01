@@ -55,5 +55,14 @@ mkdir(testdir)
                 all(Base.splat(same_value), zip(col_read, col))
             end
         end
+
+        @testset "Long string" begin
+            data = (x = ["a" ^ 2046, missing],)
+            filepath = joinpath(testdir, "testwrite_longstring.$ext")
+            writer(filepath, data)
+            rsdf = reader(filepath)
+            data_read = rsdf.data
+            @test_broken get(data_read[1][1]) == "a" ^ 2046
+        end
     end
 end
