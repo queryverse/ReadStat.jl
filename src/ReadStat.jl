@@ -321,12 +321,13 @@ function write_data_file(filetype::Val, io::IO, source)
     schema = Tables.schema(rows)
     variables_array = []
 
-    variables_array = map(Tables.columnnames(source)) do column_name
-        return ccall((:readstat_add_variable, libreadstat), 
-            Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), 
-            writer, String(column_name), READSTAT_TYPE_DOUBLE, Cint(0)) # TODO: know width
+    variables_array = map(schema.names, schema.types) do column_name, column_type
+        readstat_type, storage_width = readstat_column_type_and_width(source, column_name, nonmissingtype(column_type))
+        return add_variable!(writer, column_name, readstat_type, storage_width)
         # readstat_variable_set_label(variable, String(field)) TODO: label for a variable
     end
+
+
     
     readstat_begin_writing(writer, filetype, io, length(rows))
 
@@ -342,7 +343,33 @@ function write_data_file(filetype::Val, io::IO, source)
     ccall((:readstat_writer_free, libreadstat), Cvoid, (Ptr{Nothing},), writer)
 end
 
+readstat_column_type_and_width(_, _, other_type) = error("Cannot handle column with element type $other_type. Is this type supported by ReadStat?")
+readstat_column_type_and_width(_, _, ::Type{Float64}) = READSTAT_TYPE_DOUBLE, 0
+readstat_column_type_and_width(_, _, ::Type{Float32}) = READSTAT_TYPE_FLOAT, 0
+readstat_column_type_and_width(_, _, ::Type{Int32}) = READSTAT_TYPE_INT32, 0
+readstat_column_type_and_width(_, _, ::Type{Int16}) = READSTAT_TYPE_INT16, 0
+readstat_column_type_and_width(_, _, ::Type{Int8}) = READSTAT_TYPE_CHAR, 0
+function readstat_column_type_and_width(source, colname, ::Type{String})
+    col = Tables.getcolumn(source, colname)
+    maxlen = maximum(col) do str
+        str === missing ? 0 : ncodeunits(str)
+    end
+    if maxlen >= 2045 # maximum length of normal strings
+        return READSTAT_TYPE_LONG_STRING, 0
+    else
+        return READSTAT_TYPE_STRING, maxlen
+    end
+end
+
+add_variable!(writer, name, type, width = 0) = readstat_add_variable(writer, name, type, width)
+
 insert_value!(writer, variable, value::Float64) = readstat_insert_double_value(writer, variable, value)
+insert_value!(writer, variable, value::Float32) = readstat_insert_float_value(writer, variable, value)
+insert_value!(writer, variable, ::Missing) = readstat_insert_missing_value(writer, variable)
+insert_value!(writer, variable, value::Int8) = readstat_insert_int8_value(writer, variable, value)
+insert_value!(writer, variable, value::Int16) = readstat_insert_int16_value(writer, variable, value)
+insert_value!(writer, variable, value::Int32) = readstat_insert_int32_value(writer, variable, value)
+insert_value!(writer, variable, value::AbstractString) = readstat_insert_string_value(writer, variable, value)
 
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
 read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))

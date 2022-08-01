@@ -129,9 +129,13 @@ function readstat_insert_int8_value(writer, variable, value)
 end
 
 function readstat_insert_string_value(writer, variable, value)
-    return ccall((:readstat_insert_string_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Ptr{Cstring}), writer, variable, value)
+    return ccall((:readstat_insert_string_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}, Cstring), writer, variable, value)
 end
 
 function readstat_insert_missing_value(writer, variable)
     return ccall((:readstat_insert_missing_value, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), writer, variable)
+end
+
+function readstat_add_variable(writer, name, type, width)
+    return ccall((:readstat_add_variable, libreadstat), Ptr{Nothing}, (Ptr{Nothing}, Cstring, Cint, Cint), writer, name, type, width)
 end
