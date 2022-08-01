@@ -361,5 +361,6 @@ write_dta(filename::AbstractString, source) = write_data_file(filename, Val(:dta
 write_sav(filename::AbstractString, source) = write_data_file(filename, Val(:sav), source)
 write_por(filename::AbstractString, source) = write_data_file(filename, Val(:por), source)
 write_sas7bdat(filename::AbstractString, source) = write_data_file(filename, Val(:sas7bdat), source)
+write_xport(filename::AbstractString, source) = write_data_file(filename, Val(:xport), source)
 
 end #module ReadStat
