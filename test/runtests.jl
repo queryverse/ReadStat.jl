@@ -46,7 +46,7 @@ mkdir(testdir)
             @test length(data_read) == length(data)
             @test rsdf.headers == collect(keys(data))
 
-            same_value(a::DataValue, b) = a.hasvalue && get(a) == b
+            same_value(a::DataValue, b) = a.hasvalue && get(a) == b # SAS and SPSS only support Float64 and String, so we can't test ===
             same_value(a::DataValue, b::Missing) = !a.hasvalue
             # missing String appears to be read back in as the empty string ""
             same_value(a::DataValue{String}, b::Missing) = a.hasvalue && get(a) == ""
