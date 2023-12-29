@@ -20,7 +20,7 @@ function readstat_get_var_count(metadata::Ptr{Nothing})
 end
 
 function readstat_value_is_missing(value::ReadStatValue, variable::Ptr{Nothing})
-    return Bool(ccall((:readstat_value_is_missing, libreadstat), Cint, (ReadStatValue,Ptr{Nothing}), value, variable))
+    return Bool(ccall((:readstat_value_is_missing, libreadstat), Cint, (ReadStatValue, Ptr{Nothing}), value, variable))
 end
 
 function readstat_variable_get_index(variable::Ptr{Nothing})

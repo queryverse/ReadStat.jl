@@ -20,19 +20,19 @@ export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xpor
 ##
 ##############################################################################
 
-const READSTAT_TYPE_STRING      = Cint(0)
-const READSTAT_TYPE_CHAR        = Cint(1)
-const READSTAT_TYPE_INT16       = Cint(2)
-const READSTAT_TYPE_INT32       = Cint(3)
-const READSTAT_TYPE_FLOAT       = Cint(4)
-const READSTAT_TYPE_DOUBLE      = Cint(5)
+const READSTAT_TYPE_STRING = Cint(0)
+const READSTAT_TYPE_CHAR = Cint(1)
+const READSTAT_TYPE_INT16 = Cint(2)
+const READSTAT_TYPE_INT32 = Cint(3)
+const READSTAT_TYPE_FLOAT = Cint(4)
+const READSTAT_TYPE_DOUBLE = Cint(5)
 const READSTAT_TYPE_LONG_STRING = Cint(6)
 
-const READSTAT_ERROR_OPEN       = Cint(1)
-const READSTAT_ERROR_READ       = Cint(2)
-const READSTAT_ERROR_MALLOC     = Cint(3)
+const READSTAT_ERROR_OPEN = Cint(1)
+const READSTAT_ERROR_READ = Cint(2)
+const READSTAT_ERROR_MALLOC = Cint(3)
 const READSTAT_ERROR_USER_ABORT = Cint(4)
-const READSTAT_ERROR_PARSE      = Cint(5)
+const READSTAT_ERROR_PARSE = Cint(5)
 
 ##############################################################################
 ##
@@ -63,7 +63,7 @@ mutable struct ReadStatDataFrame
     measures::Vector{Cint}
     alignments::Vector{Cint}
     val_label_keys::Vector{String}
-    val_label_dict::Dict{String, Dict{Any,String}}
+    val_label_dict::Dict{String,Dict{Any,String}}
     rows::Int
     columns::Int
     filelabel::String
@@ -74,7 +74,7 @@ mutable struct ReadStatDataFrame
 
     ReadStatDataFrame() =
         new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
+            String[], Dict{String,Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
 end
 
 include("C_interface.jl")
@@ -139,7 +139,7 @@ get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
 function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
-                         val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
+    val_label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
     col = var_index + 1
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
     missing_count = readstat_variable_get_missing_ranges_count(variable)
@@ -167,7 +167,7 @@ end
 
 function get_type(val::Value)
     data_type = readstat_value_type(val)
-    return [String, Int8, Int16, Int32, Float32, Float64, String][data_type + 1]
+    return [String, Int8, Int16, Int32, Float32, Float64, String][data_type+1]
 end
 
 Base.convert(::Type{Int8}, val::Value) = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
@@ -182,7 +182,7 @@ end
 as_native(val::Value) = convert(get_type(val), val)
 
 function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
-                       value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
+    value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
     var_index = readstat_variable_get_index(variable) + 1
     data = ds.data
@@ -226,9 +226,9 @@ function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
 end
 
 for (j_type, rs_name) in (
-    (Int8,    :readstat_int8_value),
-    (Int16,   :readstat_int16_value),
-    (Int32,   :readstat_int32_value),
+    (Int8, :readstat_int8_value),
+    (Int16, :readstat_int16_value),
+    (Int32, :readstat_int32_value),
     (Float32, :readstat_float_value),
     (Float64, :readstat_double_value))
     @eval function readfield!(dest::DataValueVector{$j_type}, row, val::ReadStatValue)
@@ -267,7 +267,7 @@ function Parser()
     parser = ccall((:readstat_parser_init, libreadstat), Ptr{Nothing}, ())
     info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
     meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
-    var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
+    var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring, Ptr{ReadStatDataFrame}))
     val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
     label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
     ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
@@ -284,7 +284,7 @@ end
 function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
     retval = readstat_parse(filename, filetype, parser, ds)
     readstat_parser_free(parser)
-    retval == 0 ||  error("Error parsing $filename: $(error_message(retval))")
+    retval == 0 || error("Error parsing $filename: $(error_message(retval))")
 end
 
 read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))

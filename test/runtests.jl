@@ -3,10 +3,10 @@ using DataValues
 using Test
 
 @testset "ReadStat: $ext files" for (reader, ext) in
-    ((read_dta, "dta"),
-     (read_sav, "sav"),
-     (read_sas7bdat, "sas7bdat"),
-     (read_xport, "xpt"))
+                                    ((read_dta, "dta"),
+    (read_sav, "sav"),
+    (read_sas7bdat, "sas7bdat"),
+    (read_xport, "xpt"))
 
     dtafile = joinpath(dirname(@__FILE__), "types.$ext")
     rsdf = reader(dtafile)
