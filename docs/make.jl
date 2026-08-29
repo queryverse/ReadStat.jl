@@ -3,7 +3,8 @@ using Documenter, ReadStat
 makedocs(
 	modules = [ReadStat],
 	sitename = "ReadStat.jl",
-	analytics="UA-132838790-1",
+	format = Documenter.HTML(analytics = "UA-132838790-1"),
+	warnonly = [:missing_docs],
 	pages = [
         "Introduction" => "index.md"
     ]
