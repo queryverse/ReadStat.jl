@@ -21,12 +21,17 @@ export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xpor
 ##############################################################################
 
 const READSTAT_TYPE_STRING      = Cint(0)
-const READSTAT_TYPE_CHAR        = Cint(1)
+const READSTAT_TYPE_INT8        = Cint(1)
 const READSTAT_TYPE_INT16       = Cint(2)
 const READSTAT_TYPE_INT32       = Cint(3)
 const READSTAT_TYPE_FLOAT       = Cint(4)
 const READSTAT_TYPE_DOUBLE      = Cint(5)
-const READSTAT_TYPE_LONG_STRING = Cint(6)
+const READSTAT_TYPE_STRING_REF  = Cint(6)
+
+# Julia type for each readstat_type_t, indexed by the enum value plus one.
+# STRING_REF is a reference into a string table, so it surfaces as a String
+# just like STRING does.
+const READSTAT_TYPES = (String, Int8, Int16, Int32, Float32, Float64, String)
 
 const READSTAT_ERROR_OPEN       = Cint(1)
 const READSTAT_ERROR_READ       = Cint(2)
@@ -85,13 +90,6 @@ include("C_interface.jl")
 ##
 ##############################################################################
 
-function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    ds.rows = obs_count
-    ds.columns = var_count
-    return Cint(0)
-end
-
 function handle_metadata!(metadata::Ptr{Nothing}, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     ds.filelabel = readstat_get_file_label(metadata)
@@ -114,29 +112,14 @@ function get_format(var::Ptr{Nothing})
     ptr == C_NULL ? "" : unsafe_string(ptr)
 end
 
-function get_type(data_type::Cint)
-    if data_type == READSTAT_TYPE_STRING
-        return String
-    elseif data_type == READSTAT_TYPE_CHAR
-        return Int8
-    elseif data_type == READSTAT_TYPE_INT16
-        return Int16
-    elseif data_type == READSTAT_TYPE_INT32
-        return Int32
-    elseif data_type == READSTAT_TYPE_FLOAT
-        return Float32
-    elseif data_type == READSTAT_TYPE_DOUBLE
-        return Float64
-    end
-    return Nothing
-end
+get_type(data_type::Cint) = READSTAT_TYPES[data_type + 1]
 get_type(variable::Ptr{Nothing}) = get_type(readstat_variable_get_type(variable))
 
 get_storagewidth(variable::Ptr{Nothing}) = readstat_variable_get_storage_width(variable)
 
 get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
 
-get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
+get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_alignment(variable)
 
 function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
                          val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
@@ -165,10 +148,7 @@ function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
     return Cint(0)
 end
 
-function get_type(val::Value)
-    data_type = readstat_value_type(val)
-    return [String, Int8, Int16, Int32, Float32, Float64, String][data_type + 1]
-end
+get_type(val::Value) = get_type(readstat_value_type(val))
 
 Base.convert(::Type{Int8}, val::Value) = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
 Base.convert(::Type{Int16}, val::Value) = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
@@ -265,15 +245,14 @@ end
 
 function Parser()
     parser = ccall((:readstat_parser_init, libreadstat), Ptr{Nothing}, ())
-    info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
     meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
     var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
     val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
     label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
-    ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
-    ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
-    ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
+    ccall((:readstat_set_metadata_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
+    ccall((:readstat_set_variable_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
+    ccall((:readstat_set_value_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
+    ccall((:readstat_set_value_label_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
 end
 
