@@ -4,7 +4,7 @@ function readstat_get_file_label(metadata::Ptr{Nothing})
 end
 
 function readstat_get_modified_time(metadata::Ptr{Nothing})
-    return ccall((:readstat_get_modified_time, libreadstat), UInt, (Ptr{Nothing},), metadata)
+    return ccall((:readstat_get_modified_time, libreadstat), Int64, (Ptr{Nothing},), metadata)
 end
 
 function readstat_get_file_format_version(metadata::Ptr{Nothing})

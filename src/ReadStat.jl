@@ -90,13 +90,6 @@ include("C_interface.jl")
 ##
 ##############################################################################
 
-function handle_info!(obs_count::Cint, var_count::Cint, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    ds.rows = obs_count
-    ds.columns = var_count
-    return Cint(0)
-end
-
 function handle_metadata!(metadata::Ptr{Nothing}, ds_ptr::Ptr{ReadStatDataFrame})
     ds = unsafe_pointer_to_objref(ds_ptr)
     ds.filelabel = readstat_get_file_label(metadata)
@@ -252,15 +245,14 @@ end
 
 function Parser()
     parser = ccall((:readstat_parser_init, libreadstat), Ptr{Nothing}, ())
-    info_fxn = @cfunction(handle_info!, Cint, (Cint, Cint, Ptr{ReadStatDataFrame}))
     meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
     var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
     val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
     label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_metadata_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
-    ccall((:readstat_set_variable_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
-    ccall((:readstat_set_value_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
-    ccall((:readstat_set_value_label_handler, libreadstat), Int, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
+    ccall((:readstat_set_metadata_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
+    ccall((:readstat_set_variable_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
+    ccall((:readstat_set_value_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
+    ccall((:readstat_set_value_label_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
     return parser
 end
 
