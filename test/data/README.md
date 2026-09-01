@@ -16,6 +16,11 @@ Sourced fixtures (verified against the upstream git blob SHAs when copied):
   Apache-2.0 license). The two CSV files hold the expected values of
   `sample_missing.sav` with user-defined missing values collapsed to missing
   and kept as data, respectively.
+- `test_data_linux.sas7bdat`, `test_formats_linux.sas7bcat`, and
+  `sas_formatted.csv` (the expected labeled values) are copied from
+  pyreadstat's `test_data/sas_catalog/`.
+- `schema.dct` and `fixed.txt` are hand-written fixtures for the
+  fixed-width-text schema path.
 
 The `types.{dta,sav,sas7bdat,xpt,por}` fixtures in the parent directory are
 the original ReadStat.jl fixtures (`types.por` was copied from
