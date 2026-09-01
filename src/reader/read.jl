@@ -87,10 +87,12 @@ function build_table(pc::ParseContext)
     pc.aborted && trimcolumns!(pc.cols, pc.rows_complete)
     n = length(pc.names)
     columns = Vector{AbstractVector}(undef, n)
+    tags = Vector{Union{Nothing,Vector{Char}}}(undef, n)
     for i in 1:n
         columns[i] = finalize_column(pc.cols, i)
+        tags[i] = column_tags(pc.cols, i)
     end
-    return ReadStatTable(columns, pc.names, pc.meta, pc.varmeta)
+    return ReadStatTable(columns, pc.names, pc.meta, pc.varmeta, tags)
 end
 
 function read_data_file(path::AbstractString, format::Symbol;
@@ -99,7 +101,10 @@ function read_data_file(path::AbstractString, format::Symbol;
                         row_offset::Integer=0,
                         file_encoding::Union{Nothing,AbstractString}=nothing,
                         handler_encoding::Union{Nothing,AbstractString}=nothing,
+                        user_missing::Symbol=:na,
                         progress=nothing)
+    user_missing in (:na, :keep) ||
+        throw(ArgumentError("user_missing must be :na or :keep"))
     row_offset >= 0 || throw(ArgumentError("row_offset must be non-negative"))
     row_limit === nothing || row_limit >= 0 ||
         throw(ArgumentError("row_limit must be non-negative"))
@@ -118,6 +123,7 @@ function read_data_file(path::AbstractString, format::Symbol;
     end
     pc.file_encoding = file_encoding === nothing ? nothing : String(file_encoding)
     pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
+    pc.keep_user_missing = user_missing === :keep
     parse_file!(pc, path, format)
     return build_table(pc)
 end
@@ -133,6 +139,10 @@ All readers accept the same keyword arguments:
 - `file_encoding`: override the character encoding declared in the file
   (an iconv-compatible name such as `"WINDOWS-1252"`).
 - `handler_encoding`: the encoding delivered to Julia; defaults to UTF-8.
+- `user_missing`: `:na` (default) collapses SPSS user-defined missing values
+  to NA; `:keep` keeps them as data (the rules stay available in
+  `varmetadata(tbl, col).missing_ranges`). System missing and tagged missing
+  values are always NA; see [`missingtags`](@ref) for the tags.
 - `progress`: a function called with the parse fraction (0.0-1.0); return
   `false` to stop the parse and get the rows read so far.
 """

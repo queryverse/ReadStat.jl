@@ -22,9 +22,10 @@ struct ReadStatTable
 end
 
 function ReadStatTable(cols::Vector{AbstractVector}, names::Vector{Symbol},
-                       meta::ReadStatMeta, colmeta::Vector{ReadStatVarMeta})
+                       meta::ReadStatMeta, colmeta::Vector{ReadStatVarMeta},
+                       tags::Vector{Union{Nothing,Vector{Char}}}=
+                           Union{Nothing,Vector{Char}}[nothing for _ in names])
     lookup = Dict{Symbol,Int}(name => i for (i, name) in enumerate(names))
-    tags = Union{Nothing,Vector{Char}}[nothing for _ in names]
     return ReadStatTable(cols, names, lookup, meta, colmeta, tags)
 end
 
@@ -80,6 +81,17 @@ function valuelabels(tbl::ReadStatTable, col::Union{Integer,Symbol})
     vm.vallabel === Symbol("") && return nothing
     return get(filemetadata(tbl).value_labels, vm.vallabel, nothing)
 end
+
+"""
+    missingtags(tbl::ReadStatTable, col) -> Union{Nothing, Vector{Char}}
+
+Tags of the tagged missing values (Stata/SAS `.a`-`.z`) in the column given
+by index or name: a vector with one `Char` per row, `'a'`-`'z'` where the
+cell is a tagged missing value and `'\\0'` everywhere else. Returns `nothing`
+when the column contains no tagged missing values.
+"""
+missingtags(tbl::ReadStatTable, col::Union{Integer,Symbol}) =
+    getfield(tbl, :tags)[columnindex(tbl, col)]
 
 ##############################################################################
 ##

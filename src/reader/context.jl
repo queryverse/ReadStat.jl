@@ -20,7 +20,10 @@ mutable struct ParseContext
     row_limit::Int                        # -1 = no limit
     file_encoding::Union{Nothing,String}
     handler_encoding::Union{Nothing,String}
-    collect_values::Bool                  # false for metadata-only parses
+    collect_values::Bool
+    # true: SPSS user-defined missing values are kept as data (only system
+    # and tagged missings become NA); false: they collapse to NA.
+    keep_user_missing::Bool                  # false for metadata-only parses
 
     # Progress-abort bookkeeping: the last fully delivered row, so a
     # partially parsed table can be trimmed to complete rows.
@@ -29,7 +32,7 @@ mutable struct ParseContext
 end
 
 ParseContext() = ParseContext(ReadStatMeta(), Symbol[], ReadStatVarMeta[], TypedColumns(),
-    nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, 0)
+    nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, false, 0)
 
 # Rows to preallocate per column: what the file reports, minus the offset,
 # capped by the limit; 0 when unknown (buffers then grow row by row).

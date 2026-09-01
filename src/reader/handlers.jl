@@ -96,31 +96,44 @@ function handle_value(obs_index::Cint, variable::VariablePtr, value::ReadStatVal
         row = Int(obs_index) + 1
         cols = pc.cols
         code, slot = @inbounds cols.slots[idx]
-        miss = readstat_value_is_missing(value, variable)
+
+        # Three kinds of missing values (readstat.h): system missing and
+        # tagged missing (Stata/SAS .a-.z) always become NA, the latter with
+        # its tag recorded; SPSS user-defined missing values become NA by
+        # default but stay data under `user_missing=:keep`.
+        local miss::Bool, tag::Char
+        if readstat_value_is_tagged_missing(value)
+            miss = true
+            tag = readstat_value_tag(value)
+        else
+            tag = '\0'
+            miss = pc.keep_user_missing ? readstat_value_is_system_missing(value) :
+                readstat_value_is_missing(value, variable)
+        end
 
         if code == CODE_STRING
             buf = @inbounds cols.strings[slot]
             if miss
-                setmissing!(buf, row)
+                setmissing!(buf, row, tag)
             else
                 ptr = readstat_string_value(value)
                 setvalue!(buf, row, ptr == C_NULL ? "" : unsafe_string(ptr))
             end
         elseif code == CODE_INT8
             buf = @inbounds cols.int8s[slot]
-            miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_int8_value(value))
+            miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_int8_value(value))
         elseif code == CODE_INT16
             buf = @inbounds cols.int16s[slot]
-            miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_int16_value(value))
+            miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_int16_value(value))
         elseif code == CODE_INT32
             buf = @inbounds cols.int32s[slot]
-            miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_int32_value(value))
+            miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_int32_value(value))
         elseif code == CODE_FLOAT
             buf = @inbounds cols.floats[slot]
-            miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_float_value(value))
+            miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_float_value(value))
         else
             buf = @inbounds cols.doubles[slot]
-            miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_double_value(value))
+            miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_double_value(value))
         end
         # Track the last fully delivered row so a parse stopped early (by the
         # progress callback) can be trimmed to complete rows.

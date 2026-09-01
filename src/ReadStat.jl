@@ -5,7 +5,7 @@ using Dates
 
 export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     read_dta, read_sav, read_por, read_sas7bdat, read_xport, readstat, read_meta,
-    filemetadata, varmetadata, valuelabels
+    filemetadata, varmetadata, valuelabels, missingtags
 
 public CAPI
 
