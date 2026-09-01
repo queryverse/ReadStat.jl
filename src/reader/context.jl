@@ -25,7 +25,12 @@ mutable struct ParseContext
     # and tagged missings become NA); false: they collapse to NA.
     keep_user_missing::Bool
     # true: wrap value-labeled columns in a LabeledArray when building the table.
-    apply_value_labels::Bool                  # false for metadata-only parses
+    apply_value_labels::Bool
+    # true: decode columns whose display format is a date/time format.
+    convert_datetime::Bool
+    # the format being parsed (:dta, :sav, ...); selects the producer's
+    # date/time format tables.
+    file_format::Symbol                  # false for metadata-only parses
 
     # Progress-abort bookkeeping: the last fully delivered row, so a
     # partially parsed table can be trimmed to complete rows.
@@ -34,7 +39,8 @@ mutable struct ParseContext
 end
 
 ParseContext() = ParseContext(ReadStatMeta(), Symbol[], ReadStatVarMeta[], TypedColumns(),
-    nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, false, false, 0)
+    nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, false, true,
+    :none, false, 0)
 
 # Rows to preallocate per column: what the file reports, minus the offset,
 # capped by the limit; 0 when unknown (buffers then grow row by row).

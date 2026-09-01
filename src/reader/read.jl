@@ -92,12 +92,20 @@ function build_table(pc::ParseContext)
     tags = Vector{Union{Nothing,Vector{Char}}}(undef, n)
     for i in 1:n
         col = finalize_column(pc.cols, i)
-        if pc.apply_value_labels
-            vallabel = pc.varmeta[i].vallabel
-            if vallabel !== Symbol("")
-                d = get(pc.meta.value_labels, vallabel, nothing)
-                d === nothing || (col = LabeledArray(col, d))
+        vm = pc.varmeta[i]
+        labels = vm.vallabel === Symbol("") ? nothing :
+            get(pc.meta.value_labels, vm.vallabel, nothing)
+        # Value labels take precedence over a date/time display format: a
+        # labeled column holds codes, not calendar values.
+        if labels === nothing && pc.convert_datetime && eltype(eltype(col)) <: Number
+            rule = datetime_rule(vm.format, pc.file_format)
+            if rule !== nothing
+                f, target = rule
+                col = convert_datetime_column(col, f, target)
             end
+        end
+        if pc.apply_value_labels && labels !== nothing
+            col = LabeledArray(col, labels)
         end
         columns[i] = col
         tags[i] = column_tags(pc.cols, i)
@@ -112,6 +120,7 @@ function read_data_file(path::AbstractString, format::Symbol;
                         file_encoding::Union{Nothing,AbstractString}=nothing,
                         handler_encoding::Union{Nothing,AbstractString}=nothing,
                         user_missing::Symbol=:na,
+                        convert_datetime::Bool=true,
                         apply_value_labels::Bool=false,
                         catalog::Union{Nothing,AbstractString}=nothing,
                         progress=nothing)
@@ -137,6 +146,8 @@ function read_data_file(path::AbstractString, format::Symbol;
     pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
     pc.keep_user_missing = user_missing === :keep
     pc.apply_value_labels = apply_value_labels
+    pc.convert_datetime = convert_datetime
+    pc.file_format = format
     catalog === nothing || format === :sas7bdat ||
         throw(ArgumentError("`catalog` is only supported when reading sas7bdat files"))
     parse_file!(pc, path, format)
@@ -159,6 +170,9 @@ All readers accept the same keyword arguments:
   to NA; `:keep` keeps them as data (the rules stay available in
   `varmetadata(tbl, col).missing_ranges`). System missing and tagged missing
   values are always NA; see [`missingtags`](@ref) for the tags.
+- `convert_datetime`: decode columns whose display format is a date/time
+  format into `Date`/`DateTime`/[`HMS`](@ref) columns (default `true`);
+  `false` keeps the raw numbers. Value-labeled columns are never converted.
 - `apply_value_labels`: when `true`, every value-labeled column is wrapped
   in a [`LabeledArray`](@ref) (labels for display, codes for computation).
   The raw label dictionaries are always available via [`valuelabels`](@ref)

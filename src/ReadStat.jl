@@ -7,7 +7,8 @@ export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     read_dta, read_sav, read_por, read_sas7bdat, read_xport, read_sas7bcat,
     readstat, read_meta,
     filemetadata, varmetadata, valuelabels, missingtags,
-    LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels
+    LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels,
+    HMS
 
 public CAPI
 
@@ -42,6 +43,7 @@ jltype(t::ReadStatType) = READSTAT_TYPES[Int(t) + 1]
 
 include("reader/metadata.jl")
 include("values/labeled.jl")
+include("values/datetime.jl")
 include("reader/columns.jl")
 include("reader/context.jl")
 include("reader/handlers.jl")
