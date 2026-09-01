@@ -19,6 +19,12 @@ function _sniff_format(path::AbstractString, format::Symbol)
     return fmt
 end
 
+function _sniff_format(io::IO, format::Symbol)
+    format === :auto &&
+        throw(ArgumentError("the file format cannot be inferred from an IO stream; pass `format=...`"))
+    return format
+end
+
 function _parse_format(parser::ParserPtr, path::AbstractString, format::Symbol, ctx)
     if format === :dta
         CAPI.readstat_parse_dta(parser, path, ctx)
@@ -46,43 +52,76 @@ _colselector(v::AbstractVector{<:Integer}) = let s = Set{Int}(v); (name, i) -> i
 _colselector(r::Regex) = (name, i) -> occursin(r, String(name))
 _colselector(f::Function) = (name, i) -> f(name)::Bool
 
-function parse_file!(pc::ParseContext, path::AbstractString, format::Symbol)
-    isfile(path) || throw(ArgumentError("file not found: $path"))
-    parser = readstat_parser_init()
-    local retval
-    try
-        readstat_set_metadata_handler(parser, CF_METADATA[])
-        readstat_set_variable_handler(parser, CF_VARIABLE[])
-        readstat_set_value_label_handler(parser, CF_VALUE_LABEL[])
-        readstat_set_note_handler(parser, CF_NOTE[])
-        readstat_set_fweight_handler(parser, CF_FWEIGHT[])
-        readstat_set_error_handler(parser, CF_ERROR[])
-        pc.collect_values && readstat_set_value_handler(parser, CF_VALUE[])
-        pc.progress === nothing || readstat_set_progress_handler(parser, CF_PROGRESS[])
-        pc.row_offset > 0 && readstat_set_row_offset(parser, pc.row_offset)
-        pc.row_limit >= 0 && readstat_set_row_limit(parser, pc.row_limit)
-        pc.file_encoding === nothing ||
-            readstat_set_file_character_encoding(parser, pc.file_encoding)
-        pc.handler_encoding === nothing ||
-            readstat_set_handler_character_encoding(parser, pc.handler_encoding)
-        retval = _parse_format(parser, path, format, pc)
-    finally
-        readstat_parser_free(parser)
-    end
+function _set_handlers!(parser::ParserPtr, pc::ParseContext)
+    readstat_set_metadata_handler(parser, CF_METADATA[])
+    readstat_set_variable_handler(parser, CF_VARIABLE[])
+    readstat_set_value_label_handler(parser, CF_VALUE_LABEL[])
+    readstat_set_note_handler(parser, CF_NOTE[])
+    readstat_set_fweight_handler(parser, CF_FWEIGHT[])
+    readstat_set_error_handler(parser, CF_ERROR[])
+    pc.collect_values && readstat_set_value_handler(parser, CF_VALUE[])
+    pc.progress === nothing || readstat_set_progress_handler(parser, CF_PROGRESS[])
+    pc.row_offset > 0 && readstat_set_row_offset(parser, pc.row_offset)
+    pc.row_limit >= 0 && readstat_set_row_limit(parser, pc.row_limit)
+    pc.file_encoding === nothing ||
+        readstat_set_file_character_encoding(parser, pc.file_encoding)
+    pc.handler_encoding === nothing ||
+        readstat_set_handler_character_encoding(parser, pc.handler_encoding)
+    return parser
+end
+
+function _finish_parse(pc::ParseContext, retval::ReadStatError, what::AbstractString)
     if pc.err !== nothing
         e, _ = pc.err
         throw(e)
     end
     for w in pc.warnings
-        @warn "readstat: $w" _module = ReadStat _file = String(path)
+        @warn "readstat: $w" _module = ReadStat _file = what
     end
     if retval == READSTAT_ERROR_USER_ABORT && pc.aborted
         # The progress callback stopped the parse; the caller gets the rows
         # delivered so far.
     elseif retval != READSTAT_OK
-        error("Error parsing $path: $(readstat_error_message(retval))")
+        error("Error parsing $what: $(readstat_error_message(retval))")
     end
     return pc
+end
+
+function parse_file!(pc::ParseContext, path::AbstractString, format::Symbol)
+    isfile(path) || throw(ArgumentError("file not found: $path"))
+    parser = readstat_parser_init()
+    local retval
+    try
+        _set_handlers!(parser, pc)
+        retval = _parse_format(parser, path, format, pc)
+    finally
+        readstat_parser_free(parser)
+    end
+    return _finish_parse(pc, retval, path)
+end
+
+function parse_file!(pc::ParseContext, io::IO, format::Symbol)
+    src = IOSource(io)
+    parser = readstat_parser_init()
+    local retval
+    try
+        _set_handlers!(parser, pc)
+        readstat_set_open_handler(parser, CF_IO_OPEN[])
+        readstat_set_close_handler(parser, CF_IO_CLOSE[])
+        readstat_set_seek_handler(parser, CF_IO_SEEK[])
+        readstat_set_read_handler(parser, CF_IO_READ[])
+        GC.@preserve src begin
+            readstat_set_io_ctx(parser, pointer_from_objref(src))
+            retval = _parse_format(parser, "", format, pc)
+        end
+    finally
+        readstat_parser_free(parser)
+    end
+    if src.err !== nothing
+        e, _ = src.err
+        throw(e)
+    end
+    return _finish_parse(pc, retval, "IO stream")
 end
 
 function build_table(pc::ParseContext)
@@ -113,7 +152,7 @@ function build_table(pc::ParseContext)
     return ReadStatTable(columns, pc.names, pc.meta, pc.varmeta, tags)
 end
 
-function read_data_file(path::AbstractString, format::Symbol;
+function read_data_file(source::Union{AbstractString,IO}, format::Symbol;
                         usecols=nothing,
                         row_limit::Union{Nothing,Integer}=nothing,
                         row_offset::Integer=0,
@@ -150,12 +189,16 @@ function read_data_file(path::AbstractString, format::Symbol;
     pc.file_format = format
     catalog === nothing || format === :sas7bdat ||
         throw(ArgumentError("`catalog` is only supported when reading sas7bdat files"))
-    parse_file!(pc, path, format)
+    parse_file!(pc, source, format)
     catalog === nothing || merge!(pc.meta.value_labels, read_sas7bcat(catalog))
     return build_table(pc)
 end
 
 const _READ_KWARGS_DOC = """
+Instead of a path, every reader also accepts an `IO` containing the complete
+file (a non-seekable stream is buffered in memory first). The `progress`
+callback only fires for path input.
+
 All readers accept the same keyword arguments:
 
 - `usecols`: read only these columns — a `Symbol`, column index, vector of
@@ -191,7 +234,7 @@ data and metadata.
 
 $_READ_KWARGS_DOC
 """
-read_dta(path::AbstractString; kwargs...) = read_data_file(path, :dta; kwargs...)
+read_dta(source::Union{AbstractString,IO}; kwargs...) = read_data_file(source, :dta; kwargs...)
 
 """
     read_sav(path; kwargs...) -> ReadStatTable
@@ -200,7 +243,7 @@ Read an SPSS `.sav` (or `.zsav`) file.
 
 $_READ_KWARGS_DOC
 """
-read_sav(path::AbstractString; kwargs...) = read_data_file(path, :sav; kwargs...)
+read_sav(source::Union{AbstractString,IO}; kwargs...) = read_data_file(source, :sav; kwargs...)
 
 """
     read_por(path; kwargs...) -> ReadStatTable
@@ -210,7 +253,7 @@ so `filemetadata(tbl).row_count` is `-1`.
 
 $_READ_KWARGS_DOC
 """
-read_por(path::AbstractString; kwargs...) = read_data_file(path, :por; kwargs...)
+read_por(source::Union{AbstractString,IO}; kwargs...) = read_data_file(source, :por; kwargs...)
 
 """
     read_sas7bdat(path; kwargs...) -> ReadStatTable
@@ -219,7 +262,8 @@ Read a SAS `.sas7bdat` data file.
 
 $_READ_KWARGS_DOC
 """
-read_sas7bdat(path::AbstractString; kwargs...) = read_data_file(path, :sas7bdat; kwargs...)
+read_sas7bdat(source::Union{AbstractString,IO}; kwargs...) =
+    read_data_file(source, :sas7bdat; kwargs...)
 
 """
     read_xport(path; kwargs...) -> ReadStatTable
@@ -229,7 +273,8 @@ count, so `filemetadata(tbl).row_count` is `-1`.
 
 $_READ_KWARGS_DOC
 """
-read_xport(path::AbstractString; kwargs...) = read_data_file(path, :xport; kwargs...)
+read_xport(source::Union{AbstractString,IO}; kwargs...) =
+    read_data_file(source, :xport; kwargs...)
 
 """
     readstat(path; format=:auto, kwargs...) -> ReadStatTable
@@ -237,12 +282,13 @@ read_xport(path::AbstractString; kwargs...) = read_data_file(path, :xport; kwarg
 Read a stat-package data file, inferring the format from the file extension
 (`.dta`, `.sav`/`.zsav`, `.por`, `.sas7bdat`, `.xpt`/`.xport`) unless
 `format` is given explicitly (`:dta`, `:sav`, `:por`, `:sas7bdat`,
-`:xport`).
+`:xport`). For `IO` input the format cannot be inferred, so `format` is
+required.
 
 $_READ_KWARGS_DOC
 """
-readstat(path::AbstractString; format::Symbol=:auto, kwargs...) =
-    read_data_file(path, _sniff_format(path, format); kwargs...)
+readstat(source::Union{AbstractString,IO}; format::Symbol=:auto, kwargs...) =
+    read_data_file(source, _sniff_format(source, format); kwargs...)
 
 """
     read_sas7bcat(path) -> Dict{Symbol, ValueLabelDict}
@@ -268,7 +314,7 @@ zero rows, but its [`filemetadata`](@ref), [`varmetadata`](@ref), and
 in the file (`filemetadata(tbl).row_count`). This is much cheaper than
 reading the data.
 """
-function read_meta(path::AbstractString; format::Symbol=:auto,
+function read_meta(source::Union{AbstractString,IO}; format::Symbol=:auto,
                    file_encoding::Union{Nothing,AbstractString}=nothing,
                    handler_encoding::Union{Nothing,AbstractString}=nothing)
     pc = ParseContext()
@@ -277,6 +323,6 @@ function read_meta(path::AbstractString; format::Symbol=:auto,
     # row limit in effect, and read_meta must report the true count.
     pc.file_encoding = file_encoding === nothing ? nothing : String(file_encoding)
     pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
-    parse_file!(pc, path, _sniff_format(path, format))
+    parse_file!(pc, source, _sniff_format(source, format))
     return build_table(pc)
 end

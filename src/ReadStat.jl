@@ -48,11 +48,13 @@ include("reader/columns.jl")
 include("reader/context.jl")
 include("reader/handlers.jl")
 include("reader/table.jl")
+include("reader/io.jl")
 include("reader/read.jl")
 include("deprecated.jl")
 
 function __init__()
     _init_cfunctions()
+    _init_io_cfunctions()
     return nothing
 end
 
