@@ -33,7 +33,9 @@ end
     ReadStatMeta
 
 File-level metadata: `row_count` (`-1` when the format does not record it —
-XPORT, POR, and some non-conforming SAV files), `var_count`, `creation_time`
+XPORT, POR, and some non-conforming SAV files; when a read used a
+`row_limit`, the C library caps the reported count at that limit — use
+[`read_meta`](@ref) for the true count), `var_count`, `creation_time`
 and `modified_time`, `file_format_version`, `is_64bit` (SAS), `compression`,
 `endianness`, `table_name` (XPORT), `file_label`, `file_encoding`, `notes`,
 `fweight` (frequency-weight variable, `Symbol("")` when none), and

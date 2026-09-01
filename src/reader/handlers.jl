@@ -61,9 +61,14 @@ end
 function handle_variable(index::Cint, variable::VariablePtr, val_labels::Cstring, ctx::Any)::Cint
     pc = ctx::ParseContext
     try
+        name = Symbol(readstat_variable_get_name(variable))
+        sel = pc.usecols
+        if sel !== nothing && !(sel(name, Int(index) + 1)::Bool)
+            return READSTAT_HANDLER_SKIP_VARIABLE
+        end
         t = readstat_variable_get_type(variable)
         vm = ReadStatVarMeta(
-            Symbol(readstat_variable_get_name(variable)),
+            name,
             readstat_variable_get_label(variable),
             readstat_variable_get_format(variable),
             t,
@@ -76,7 +81,7 @@ function handle_variable(index::Cint, variable::VariablePtr, val_labels::Cstring
             _missing_ranges(variable))
         push!(pc.varmeta, vm)
         push!(pc.names, vm.name)
-        addcolumn!(pc.cols, jltype(t), max(pc.meta.row_count, 0))
+        addcolumn!(pc.cols, jltype(t), alloc_rows(pc))
         return READSTAT_HANDLER_OK
     catch e
         pc.err = (e, catch_backtrace())
@@ -117,6 +122,9 @@ function handle_value(obs_index::Cint, variable::VariablePtr, value::ReadStatVal
             buf = @inbounds cols.doubles[slot]
             miss ? setmissing!(buf, row) : setvalue!(buf, row, readstat_double_value(value))
         end
+        # Track the last fully delivered row so a parse stopped early (by the
+        # progress callback) can be trimmed to complete rows.
+        idx == length(cols.slots) && (pc.rows_complete = row)
         return READSTAT_HANDLER_OK
     catch e
         pc.err = (e, catch_backtrace())
@@ -157,17 +165,73 @@ function handle_value_label(val_labels::Cstring, value::ReadStatValue, label::Cs
     end
 end
 
+function handle_note(note_index::Cint, note::Cstring, ctx::Any)::Cint
+    pc = ctx::ParseContext
+    try
+        note == C_NULL || push!(pc.meta.notes, unsafe_string(note))
+        return READSTAT_HANDLER_OK
+    catch e
+        pc.err = (e, catch_backtrace())
+        return READSTAT_HANDLER_ABORT
+    end
+end
+
+function handle_fweight(variable::VariablePtr, ctx::Any)::Cint
+    pc = ctx::ParseContext
+    try
+        pc.meta.fweight = Symbol(readstat_variable_get_name(variable))
+        return READSTAT_HANDLER_OK
+    catch e
+        pc.err = (e, catch_backtrace())
+        return READSTAT_HANDLER_ABORT
+    end
+end
+
+# The C error handler reports warnings the parse survives; it returns void,
+# so exceptions can neither abort nor propagate — swallow them.
+function handle_error(message::Cstring, ctx::Any)::Cvoid
+    pc = ctx::ParseContext
+    try
+        message == C_NULL || push!(pc.warnings, unsafe_string(message))
+    catch
+    end
+    return nothing
+end
+
+function handle_progress(progress::Cdouble, ctx::Any)::Cint
+    pc = ctx::ParseContext
+    try
+        f = pc.progress
+        if f !== nothing && f(Float64(progress)) === false
+            pc.aborted = true
+            return READSTAT_HANDLER_ABORT
+        end
+        return READSTAT_HANDLER_OK
+    catch e
+        pc.err = (e, catch_backtrace())
+        return READSTAT_HANDLER_ABORT
+    end
+end
+
 # @cfunction pointers are runtime values, so they are created in __init__ and
 # cached here rather than serialized into the precompile image.
 const CF_METADATA = Ref(C_NULL)
 const CF_VARIABLE = Ref(C_NULL)
 const CF_VALUE = Ref(C_NULL)
 const CF_VALUE_LABEL = Ref(C_NULL)
+const CF_NOTE = Ref(C_NULL)
+const CF_FWEIGHT = Ref(C_NULL)
+const CF_ERROR = Ref(C_NULL)
+const CF_PROGRESS = Ref(C_NULL)
 
 function _init_cfunctions()
     CF_METADATA[] = @cfunction(handle_metadata, Cint, (MetadataPtr, Any))
     CF_VARIABLE[] = @cfunction(handle_variable, Cint, (Cint, VariablePtr, Cstring, Any))
     CF_VALUE[] = @cfunction(handle_value, Cint, (Cint, VariablePtr, ReadStatValue, Any))
     CF_VALUE_LABEL[] = @cfunction(handle_value_label, Cint, (Cstring, ReadStatValue, Cstring, Any))
+    CF_NOTE[] = @cfunction(handle_note, Cint, (Cint, Cstring, Any))
+    CF_FWEIGHT[] = @cfunction(handle_fweight, Cint, (VariablePtr, Any))
+    CF_ERROR[] = @cfunction(handle_error, Cvoid, (Cstring, Any))
+    CF_PROGRESS[] = @cfunction(handle_progress, Cint, (Cdouble, Any))
     return nothing
 end

@@ -102,6 +102,23 @@ end
 _navalue(::Type{T}) where {T<:Number} = zero(T)
 _navalue(::Type{String}) = ""
 
+function trim!(buf::ColumnBuf, n::Int)
+    if length(buf.values) > n
+        resize!(buf.values, n)
+        resize!(buf.isna, n)
+    end
+    return buf
+end
+
+# Trim every buffer to `n` rows (used when a parse was stopped early and the
+# preallocated or partially filled buffers extend past the last complete row).
+function trimcolumns!(cols::TypedColumns, n::Int)
+    for group in (cols.strings, cols.int8s, cols.int16s, cols.int32s, cols.floats, cols.doubles)
+        foreach(buf -> trim!(buf, n), group)
+    end
+    return cols
+end
+
 # Wrap a finished buffer without copying. The constructor takes ownership of
 # both vectors; nothing may touch the ColumnBuf afterwards.
 finalize_column(buf::ColumnBuf{T}) where {T} = DataValueVector{T}(buf.values, buf.isna)
