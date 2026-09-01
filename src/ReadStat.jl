@@ -49,6 +49,7 @@ include("reader/context.jl")
 include("reader/handlers.jl")
 include("reader/table.jl")
 include("reader/io.jl")
+include("reader/threaded.jl")
 include("reader/read.jl")
 include("deprecated.jl")
 

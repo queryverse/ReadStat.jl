@@ -66,6 +66,9 @@ function handle_variable(index::Cint, variable::VariablePtr, val_labels::Cstring
         if sel !== nothing && !(sel(name, Int(index) + 1)::Bool)
             return READSTAT_HANDLER_SKIP_VARIABLE
         end
+        # Chunk contexts of a multi-task read come with shared, fully
+        # prepared columns; only the skip decision above matters here.
+        pc.preassigned_cols && return READSTAT_HANDLER_OK
         t = readstat_variable_get_type(variable)
         vm = ReadStatVarMeta(
             name,
@@ -93,7 +96,7 @@ function handle_value(obs_index::Cint, variable::VariablePtr, value::ReadStatVal
     pc = ctx::ParseContext
     try
         idx = readstat_variable_get_index_after_skipping(variable) + 1
-        row = Int(obs_index) + 1
+        row = pc.row_base + Int(obs_index) + 1
         cols = pc.cols
         code, slot = @inbounds cols.slots[idx]
 

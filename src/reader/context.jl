@@ -28,6 +28,14 @@ mutable struct ParseContext
     apply_value_labels::Bool
     # true: decode columns whose display format is a date/time format.
     convert_datetime::Bool
+    # Row index (0-based) of this parse's first row within the final table;
+    # nonzero only for the chunk contexts of a multi-task read, whose
+    # obs_index values are relative to their own row_offset.
+    row_base::Int
+    # true for chunk contexts whose `cols` were prepared up front (shared
+    # buffers): the variable handler must not allocate columns, only apply
+    # the usecols decision.
+    preassigned_cols::Bool
     # the format being parsed (:dta, :sav, ...); selects the producer's
     # date/time format tables.
     file_format::Symbol                  # false for metadata-only parses
@@ -40,7 +48,7 @@ end
 
 ParseContext() = ParseContext(ReadStatMeta(), Symbol[], ReadStatVarMeta[], TypedColumns(),
     nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, false, true,
-    :none, false, 0)
+    0, false, :none, false, 0)
 
 # Rows to preallocate per column: what the file reports, minus the offset,
 # capped by the limit; 0 when unknown (buffers then grow row by row).

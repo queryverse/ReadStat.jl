@@ -162,6 +162,7 @@ function read_data_file(source::Union{AbstractString,IO}, format::Symbol;
                         convert_datetime::Bool=true,
                         apply_value_labels::Bool=false,
                         catalog::Union{Nothing,AbstractString}=nothing,
+                        ntasks::Union{Nothing,Integer}=nothing,
                         progress=nothing)
     user_missing in (:na, :keep) ||
         throw(ArgumentError("user_missing must be :na or :keep"))
@@ -174,10 +175,10 @@ function read_data_file(source::Union{AbstractString,IO}, format::Symbol;
     pc.row_offset = Int(row_offset)
     if row_limit == 0
         # The C library treats a row limit of 0 as "no limit", so a zero-row
-        # read is done by not collecting values at all (with a 1-row limit as
-        # a hint to stop decoding the data section early).
+        # read is done by not collecting values at all. No C row limit is set
+        # either: the sav parser does not reliably deliver value labels when
+        # one is in effect.
         pc.collect_values = false
-        pc.row_limit = 1
     else
         pc.row_limit = row_limit === nothing ? -1 : Int(row_limit)
     end
@@ -189,7 +190,14 @@ function read_data_file(source::Union{AbstractString,IO}, format::Symbol;
     pc.file_format = format
     catalog === nothing || format === :sas7bdat ||
         throw(ArgumentError("`catalog` is only supported when reading sas7bdat files"))
-    parse_file!(pc, source, format)
+
+    parsed = false
+    if source isa AbstractString && pc.collect_values && progress === nothing &&
+       format in _THREADED_FORMATS
+        T = ntasks === nothing ? _auto_ntasks(source) : max(Int(ntasks), 1)
+        T > 1 && (parsed = threaded_parse!(pc, source, format, T))
+    end
+    parsed || parse_file!(pc, source, format)
     catalog === nothing || merge!(pc.meta.value_labels, read_sas7bcat(catalog))
     return build_table(pc)
 end
@@ -222,8 +230,14 @@ All readers accept the same keyword arguments:
   regardless.
 - `catalog` (sas7bdat only): path to the `.sas7bcat` catalog holding the
   file's value labels; they are merged into the table's value labels.
+- `ntasks`: number of parallel parsers for path input to formats that record
+  a row count (`.dta`, `.sav`, `.sas7bdat`): the row range is split into
+  contiguous chunks that parse concurrently into shared buffers. By default
+  large files use up to 8 threads and small files parse serially; pass an
+  integer to force a task count, or `1` to disable.
 - `progress`: a function called with the parse fraction (0.0-1.0); return
-  `false` to stop the parse and get the rows read so far.
+  `false` to stop the parse and get the rows read so far (disables
+  `ntasks`).
 """
 
 """

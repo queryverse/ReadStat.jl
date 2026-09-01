@@ -157,3 +157,18 @@ end
 finalize_column(cols::TypedColumns, i::Int) = finalize_column(getbuf(cols, i))
 
 column_tags(cols::TypedColumns, i::Int) = getbuf(cols, i).tags
+
+# A per-task view for multi-task reads: shares the value and NA-mask vectors
+# (each task writes only its disjoint row region) but gives every task its
+# own lazily allocated tag vector, since concurrent lazy allocation on a
+# shared ColumnBuf would race. Tags are merged after the tasks join.
+function share_buffers(cols::TypedColumns)
+    TypedColumns(
+        [ColumnBuf{String}(b.values, b.isna, nothing) for b in cols.strings],
+        [ColumnBuf{Int8}(b.values, b.isna, nothing) for b in cols.int8s],
+        [ColumnBuf{Int16}(b.values, b.isna, nothing) for b in cols.int16s],
+        [ColumnBuf{Int32}(b.values, b.isna, nothing) for b in cols.int32s],
+        [ColumnBuf{Float32}(b.values, b.isna, nothing) for b in cols.floats],
+        [ColumnBuf{Float64}(b.values, b.isna, nothing) for b in cols.doubles],
+        cols.slots)
+end
