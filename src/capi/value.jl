@@ -12,13 +12,16 @@ export ReadStatValue, Coff_t, Ctime_t,
     readstat_value_tag, readstat_int8_value, readstat_int16_value, readstat_int32_value,
     readstat_float_value, readstat_double_value, readstat_string_value
 
-# readstat_off_t and time_t as the C library was compiled: 64-bit on Windows
-# (_off64_t, 64-bit time_t) and on 64-bit unix, but 32-bit on 32-bit unix,
-# where glibc's off_t/time_t stay 32-bit without large-file/time64 opt-ins
-# (which the jll build does not use). Getting these wrong shifts the
-# argument stack of the seek callback on 32-bit Linux.
+# readstat_off_t and time_t as the C library was compiled. readstat.h
+# typedefs readstat_off_t to _off64_t on Windows, so it is 64-bit on both
+# Windows architectures; elsewhere it is off_t, which is 32-bit on 32-bit
+# unix (no large-file opt-in in the jll build). time_t follows the word
+# size everywhere: 32-bit on i686 for both MinGW (no _USE_32BIT_TIME_T
+# opt-out) and glibc (no time64 opt-in). Getting these wrong shifts the
+# seek callback's argument stack (segfaults) or fills the high half of
+# timestamps with register garbage.
 const Coff_t = (Sys.iswindows() || Sys.WORD_SIZE == 64) ? Int64 : Int32
-const Ctime_t = (Sys.iswindows() || Sys.WORD_SIZE == 64) ? Int64 : Int32
+const Ctime_t = Sys.WORD_SIZE == 64 ? Int64 : Int32
 
 # Opaque C struct tags; only ever used as Ptr{...} type parameters.
 abstract type readstat_parser_s end
