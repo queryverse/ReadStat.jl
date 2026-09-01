@@ -9,9 +9,18 @@ export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     filemetadata, varmetadata, valuelabels, missingtags,
     LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels,
     HMS,
-    ReadStatSource, ReadStatChunks, schema, colnames, coltypes, nrows, supports, chunks
+    ReadStatSource, ReadStatChunks, schema, colnames, coltypes, nrows, supports, chunks,
+    write_dta, write_sav, write_por, write_sas7bdat, write_xport, write_sas7bcat
 
 public CAPI
+
+# The low-level writer layer: public, not exported.
+public Writer, WriterVariable, LabelSet, StringRef,
+    add_label_set!, label!, add_variable!, add_note!, add_string_ref!,
+    file_label!, timestamp!, fweight!, format_version!, table_name!, is_64bit!,
+    compression!, begin_writing!, validate_metadata, validate_variable,
+    begin_row!, end_row!, insert_value!, insert_missing!, insert_tagged_missing!,
+    insert_string_ref!, end_writing!
 
 """
     ReadStat.CAPI
@@ -30,6 +39,7 @@ using ReadStat_jll: libreadstat
 include("capi/enums.jl")
 include("capi/value.jl")
 include("capi/parser.jl")
+include("capi/writer.jl")
 
 end # module CAPI
 
@@ -54,11 +64,14 @@ include("reader/threaded.jl")
 include("reader/read.jl")
 include("reader/source.jl")
 include("reader/chunks.jl")
+include("writer/writer.jl")
+include("writer/write.jl")
 include("deprecated.jl")
 
 function __init__()
     _init_cfunctions()
     _init_io_cfunctions()
+    _init_writer_cfunctions()
     return nothing
 end
 
