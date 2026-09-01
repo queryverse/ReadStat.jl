@@ -1,8 +1,13 @@
 # File-level and per-variable metadata captured during a parse.
 
-# One value-label set: maps a raw value to its display label. Keys are
-# normalized to Int32 (all integer types), Float64 (all floats), String, or —
-# for labeled tagged missing values like Stata's `.a` — the tag Char.
+"""
+    ValueLabelDict
+
+One value-label set: a dictionary mapping raw values to their display
+labels. Keys are normalized to `Int32` (all integer types), `Float64` (all
+floats), `String`, or — for labeled tagged missing values like Stata's
+`.a` — the tag `Char`.
+"""
 const ValueLabelDict = Dict{Union{Char,Int32,Float64,String},String}
 
 """

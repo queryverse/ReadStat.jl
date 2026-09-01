@@ -100,11 +100,11 @@ function readstat_get_var_count(metadata::MetadataPtr)
 end
 
 function readstat_get_creation_time(metadata::MetadataPtr)
-    @ccall libreadstat.readstat_get_creation_time(metadata::MetadataPtr)::Int64
+    Int64(@ccall libreadstat.readstat_get_creation_time(metadata::MetadataPtr)::Ctime_t)
 end
 
 function readstat_get_modified_time(metadata::MetadataPtr)
-    @ccall libreadstat.readstat_get_modified_time(metadata::MetadataPtr)::Int64
+    Int64(@ccall libreadstat.readstat_get_modified_time(metadata::MetadataPtr)::Ctime_t)
 end
 
 function readstat_get_file_format_version(metadata::MetadataPtr)

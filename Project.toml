@@ -12,7 +12,7 @@ TestItemRunner = "f8b46487-2199-4994-9208-9a1283c18c0a"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [compat]
-julia = "1.12"
+julia = "1.10"
 DataValues = "0.4.13, 0.5, 1"
 ReadStat_jll = "1.1.9"
 

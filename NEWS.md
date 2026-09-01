@@ -39,7 +39,7 @@ Breaking release. Highlights:
   against the C library; cells the parser never delivers are NA over defined
   storage instead of undefined memory; parsers are freed even when a handler
   throws.
-* Requires Julia 1.12.
+* Requires Julia 1.10.
 
 # ReadStat.jl v1.1.0 Release Notes
 * Add support for SAS XPORT

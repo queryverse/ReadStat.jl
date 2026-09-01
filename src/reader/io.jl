@@ -42,18 +42,21 @@ end
 handle_io_open(path::Cstring, io_ctx::Ptr{Cvoid})::Cint = Cint(0)
 handle_io_close(io_ctx::Ptr{Cvoid})::Cint = Cint(0)
 
-function handle_io_seek(offset::Int64, whence::ReadStatIOFlags, io_ctx::Ptr{Cvoid})::Int64
+# The offset and return type must match readstat_off_t as the C library was
+# compiled (32-bit on 32-bit unix); a width mismatch shifts the callback's
+# argument stack there.
+function handle_io_seek(offset::Coff_t, whence::ReadStatIOFlags, io_ctx::Ptr{Cvoid})::Coff_t
     src = unsafe_pointer_to_objref(io_ctx)::IOSource
     try
-        pos = whence == READSTAT_SEEK_SET ? offset :
+        pos = whence == READSTAT_SEEK_SET ? Int64(offset) :
               whence == READSTAT_SEEK_CUR ? Int64(position(src.io)) + offset :
               src.size + offset
-        (pos < 0 || pos > src.size) && return Int64(-1)
+        (pos < 0 || pos > src.size) && return Coff_t(-1)
         seek(src.io, pos)
-        return Int64(position(src.io))
+        return Coff_t(position(src.io))
     catch e
         src.err = (e, catch_backtrace())
-        return Int64(-1)
+        return Coff_t(-1)
     end
 end
 
@@ -79,7 +82,7 @@ const CF_IO_READ = Ref(C_NULL)
 function _init_io_cfunctions()
     CF_IO_OPEN[] = @cfunction(handle_io_open, Cint, (Cstring, Ptr{Cvoid}))
     CF_IO_CLOSE[] = @cfunction(handle_io_close, Cint, (Ptr{Cvoid},))
-    CF_IO_SEEK[] = @cfunction(handle_io_seek, Int64, (Int64, ReadStatIOFlags, Ptr{Cvoid}))
+    CF_IO_SEEK[] = @cfunction(handle_io_seek, Coff_t, (Coff_t, ReadStatIOFlags, Ptr{Cvoid}))
     CF_IO_READ[] = @cfunction(handle_io_read, Cssize_t, (Ptr{Cvoid}, Csize_t, Ptr{Cvoid}))
     return nothing
 end

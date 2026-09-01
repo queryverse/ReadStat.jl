@@ -13,15 +13,16 @@ export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     write_dta, write_sav, write_por, write_sas7bdat, write_xport, write_sas7bcat,
     read_txt
 
-public CAPI
-
-# The low-level writer layer: public, not exported.
-public Writer, WriterVariable, LabelSet, StringRef,
-    add_label_set!, label!, add_variable!, add_note!, add_string_ref!,
-    file_label!, timestamp!, fweight!, format_version!, table_name!, is_64bit!,
-    compression!, begin_writing!, validate_metadata, validate_variable,
-    begin_row!, end_row!, insert_value!, insert_missing!, insert_tagged_missing!,
-    insert_string_ref!, end_writing!
+# The CAPI submodule and the low-level writer layer are public but not
+# exported. The `public` keyword only exists on Julia 1.11+, so it is
+# declared via eval to keep Julia 1.10 parsing this file.
+VERSION >= v"1.11.0-DEV" && eval(Meta.parse(
+    "public CAPI, Writer, WriterVariable, LabelSet, StringRef, " *
+    "add_label_set!, label!, add_variable!, add_note!, add_string_ref!, " *
+    "file_label!, timestamp!, fweight!, format_version!, table_name!, is_64bit!, " *
+    "compression!, begin_writing!, validate_metadata, validate_variable, " *
+    "begin_row!, end_row!, insert_value!, insert_missing!, insert_tagged_missing!, " *
+    "insert_string_ref!, end_writing!"))
 
 """
     ReadStat.CAPI

@@ -4,13 +4,21 @@
 # and returns it by value, so an opaque pointer is not an option. Every other
 # C struct is handled through an opaque pointer plus the C getter functions.
 
-export ReadStatValue,
+export ReadStatValue, Coff_t, Ctime_t,
     ParserPtr, MetadataPtr, VariablePtr, LabelSetPtr, SchemaPtr, WriterPtr, StringRefPtr,
     readstat_value_type, readstat_value_type_class, readstat_type_class,
     readstat_value_is_missing, readstat_value_is_system_missing,
     readstat_value_is_tagged_missing, readstat_value_is_defined_missing,
     readstat_value_tag, readstat_int8_value, readstat_int16_value, readstat_int32_value,
     readstat_float_value, readstat_double_value, readstat_string_value
+
+# readstat_off_t and time_t as the C library was compiled: 64-bit on Windows
+# (_off64_t, 64-bit time_t) and on 64-bit unix, but 32-bit on 32-bit unix,
+# where glibc's off_t/time_t stay 32-bit without large-file/time64 opt-ins
+# (which the jll build does not use). Getting these wrong shifts the
+# argument stack of the seek callback on 32-bit Linux.
+const Coff_t = (Sys.iswindows() || Sys.WORD_SIZE == 64) ? Int64 : Int32
+const Ctime_t = (Sys.iswindows() || Sys.WORD_SIZE == 64) ? Int64 : Int32
 
 # Opaque C struct tags; only ever used as Ptr{...} type parameters.
 abstract type readstat_parser_s end

@@ -144,7 +144,7 @@ end
 
 function readstat_writer_set_file_timestamp(writer::WriterPtr, timestamp::Integer)
     @ccall libreadstat.readstat_writer_set_file_timestamp(writer::WriterPtr,
-        timestamp::Int64)::ReadStatError
+        timestamp::Ctime_t)::ReadStatError
 end
 
 function readstat_writer_set_fweight_variable(writer::WriterPtr, variable::VariablePtr)

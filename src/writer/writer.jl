@@ -188,17 +188,53 @@ across columns and rows.
 """
 add_string_ref!(w::Writer, s::AbstractString) = StringRef(readstat_add_string_ref(_ptr(w), s))
 
+"""
+    file_label!(w::Writer, s)
+
+Set the file label.
+"""
 file_label!(w::Writer, s::AbstractString) =
     _writer_check(w, readstat_writer_set_file_label(_ptr(w), s))
+
+"""
+    timestamp!(w::Writer, t::DateTime)
+
+Set the file timestamp.
+"""
 timestamp!(w::Writer, t::DateTime) =
     _writer_check(w, readstat_writer_set_file_timestamp(_ptr(w),
         round(Int64, Dates.datetime2unix(t))))
+
+"""
+    fweight!(w::Writer, var::WriterVariable)
+
+Mark a variable as the frequency weight.
+"""
 fweight!(w::Writer, var::WriterVariable) =
     _writer_check(w, readstat_writer_set_fweight_variable(_ptr(w), var.ptr))
+
+"""
+    format_version!(w::Writer, v)
+
+Set the file format version (e.g. 104-119 for `.dta`, 5 or 8 for XPORT,
+2 or 3 for `.sav`).
+"""
 format_version!(w::Writer, v::Integer) =
     _writer_check(w, readstat_writer_set_file_format_version(_ptr(w), v))
+
+"""
+    table_name!(w::Writer, s)
+
+Set the table name (used by XPORT files; defaults to `DATASET`).
+"""
 table_name!(w::Writer, s::AbstractString) =
     _writer_check(w, readstat_writer_set_table_name(_ptr(w), s))
+
+"""
+    is_64bit!(w::Writer, b::Bool)
+
+Set whether a SAS file is written in 64-bit layout (default true).
+"""
 is_64bit!(w::Writer, b::Bool) =
     _writer_check(w, readstat_writer_set_file_format_is_64bit(_ptr(w), b))
 
@@ -247,13 +283,44 @@ function begin_writing!(w::Writer, format::Symbol, row_count::Integer=0)
     return w
 end
 
+"""
+    validate_metadata(w::Writer)
+
+Run the format's file-level validation (call after [`begin_writing!`](@ref)).
+"""
 validate_metadata(w::Writer) = _writer_check(w, readstat_validate_metadata(_ptr(w)))
+
+"""
+    validate_variable(w::Writer, var::WriterVariable)
+
+Run the format's per-variable validation (call after [`begin_writing!`](@ref)).
+"""
 validate_variable(w::Writer, var::WriterVariable) =
     _writer_check(w, readstat_validate_variable(_ptr(w), var.ptr))
 
+"""
+    begin_row!(w::Writer)
+
+Start one observation; insert a value for every variable, then call
+[`end_row!`](@ref).
+"""
 begin_row!(w::Writer) = _writer_check(w, readstat_begin_row(_ptr(w)))
+
+"""
+    end_row!(w::Writer)
+
+Finish the current observation.
+"""
 end_row!(w::Writer) = _writer_check(w, readstat_end_row(_ptr(w)))
 
+"""
+    insert_value!(w::Writer, var::WriterVariable, v)
+
+Insert one cell into the current row: an `Int8`/`Int16`/`Int32`/`Float32`/
+`Float64` or a string, matching the variable's storage type. See also
+[`insert_missing!`](@ref), [`insert_tagged_missing!`](@ref), and
+[`insert_string_ref!`](@ref).
+"""
 insert_value!(w::Writer, var::WriterVariable, v::Int8) =
     _writer_check(w, readstat_insert_int8_value(_ptr(w), var.ptr, v))
 insert_value!(w::Writer, var::WriterVariable, v::Int16) =
@@ -266,10 +333,29 @@ insert_value!(w::Writer, var::WriterVariable, v::Float64) =
     _writer_check(w, readstat_insert_double_value(_ptr(w), var.ptr, v))
 insert_value!(w::Writer, var::WriterVariable, v::AbstractString) =
     _writer_check(w, readstat_insert_string_value(_ptr(w), var.ptr, v))
+
+"""
+    insert_missing!(w::Writer, var::WriterVariable)
+
+Insert a (system) missing cell into the current row.
+"""
 insert_missing!(w::Writer, var::WriterVariable) =
     _writer_check(w, readstat_insert_missing_value(_ptr(w), var.ptr))
+
+"""
+    insert_tagged_missing!(w::Writer, var::WriterVariable, tag::Char)
+
+Insert a tagged missing cell (`'a'`-`'z'`; Stata and SAS formats only).
+"""
 insert_tagged_missing!(w::Writer, var::WriterVariable, tag::Char) =
     _writer_check(w, readstat_insert_tagged_missing_value(_ptr(w), var.ptr, tag))
+
+"""
+    insert_string_ref!(w::Writer, var::WriterVariable, ref::StringRef)
+
+Insert an interned string (from [`add_string_ref!`](@ref)) into a
+`READSTAT_TYPE_STRING_REF` (Stata strL) column.
+"""
 insert_string_ref!(w::Writer, var::WriterVariable, ref::StringRef) =
     _writer_check(w, readstat_insert_string_ref(_ptr(w), var.ptr, ref.ptr))
 
