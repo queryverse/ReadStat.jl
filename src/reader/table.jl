@@ -83,6 +83,24 @@ function valuelabels(tbl::ReadStatTable, col::Union{Integer,Symbol})
 end
 
 """
+    labeled(tbl::ReadStatTable, col) -> LabeledArray
+
+A lazy labeled view of the value-labeled column given by index or name: the
+elements display as their labels but compute as their raw codes (see
+[`LabeledValue`](@ref)). Throws when the column has no value labels; reading
+with `apply_value_labels=true` wraps every labeled column this way up front.
+"""
+function labeled(tbl::ReadStatTable, col::Union{Integer,Symbol})
+    i = columnindex(tbl, col)
+    c = getfield(tbl, :cols)[i]
+    c isa LabeledArray && return c
+    d = valuelabels(tbl, i)
+    d === nothing &&
+        throw(ArgumentError("column $(getfield(tbl, :names)[i]) has no value labels"))
+    return LabeledArray(c, d)
+end
+
+"""
     missingtags(tbl::ReadStatTable, col) -> Union{Nothing, Vector{Char}}
 
 Tags of the tagged missing values (Stata/SAS `.a`-`.z`) in the column given

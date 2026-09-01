@@ -30,6 +30,8 @@ function _parse_format(parser::ParserPtr, path::AbstractString, format::Symbol, 
         CAPI.readstat_parse_sas7bdat(parser, path, ctx)
     elseif format === :xport
         CAPI.readstat_parse_xport(parser, path, ctx)
+    elseif format === :sas7bcat
+        CAPI.readstat_parse_sas7bcat(parser, path, ctx)
     else
         throw(ArgumentError("unknown format $format"))
     end
@@ -89,7 +91,15 @@ function build_table(pc::ParseContext)
     columns = Vector{AbstractVector}(undef, n)
     tags = Vector{Union{Nothing,Vector{Char}}}(undef, n)
     for i in 1:n
-        columns[i] = finalize_column(pc.cols, i)
+        col = finalize_column(pc.cols, i)
+        if pc.apply_value_labels
+            vallabel = pc.varmeta[i].vallabel
+            if vallabel !== Symbol("")
+                d = get(pc.meta.value_labels, vallabel, nothing)
+                d === nothing || (col = LabeledArray(col, d))
+            end
+        end
+        columns[i] = col
         tags[i] = column_tags(pc.cols, i)
     end
     return ReadStatTable(columns, pc.names, pc.meta, pc.varmeta, tags)
@@ -102,6 +112,8 @@ function read_data_file(path::AbstractString, format::Symbol;
                         file_encoding::Union{Nothing,AbstractString}=nothing,
                         handler_encoding::Union{Nothing,AbstractString}=nothing,
                         user_missing::Symbol=:na,
+                        apply_value_labels::Bool=false,
+                        catalog::Union{Nothing,AbstractString}=nothing,
                         progress=nothing)
     user_missing in (:na, :keep) ||
         throw(ArgumentError("user_missing must be :na or :keep"))
@@ -124,7 +136,11 @@ function read_data_file(path::AbstractString, format::Symbol;
     pc.file_encoding = file_encoding === nothing ? nothing : String(file_encoding)
     pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
     pc.keep_user_missing = user_missing === :keep
+    pc.apply_value_labels = apply_value_labels
+    catalog === nothing || format === :sas7bdat ||
+        throw(ArgumentError("`catalog` is only supported when reading sas7bdat files"))
     parse_file!(pc, path, format)
+    catalog === nothing || merge!(pc.meta.value_labels, read_sas7bcat(catalog))
     return build_table(pc)
 end
 
@@ -143,6 +159,12 @@ All readers accept the same keyword arguments:
   to NA; `:keep` keeps them as data (the rules stay available in
   `varmetadata(tbl, col).missing_ranges`). System missing and tagged missing
   values are always NA; see [`missingtags`](@ref) for the tags.
+- `apply_value_labels`: when `true`, every value-labeled column is wrapped
+  in a [`LabeledArray`](@ref) (labels for display, codes for computation).
+  The raw label dictionaries are always available via [`valuelabels`](@ref)
+  regardless.
+- `catalog` (sas7bdat only): path to the `.sas7bcat` catalog holding the
+  file's value labels; they are merged into the table's value labels.
 - `progress`: a function called with the parse fraction (0.0-1.0); return
   `false` to stop the parse and get the rows read so far.
 """
@@ -207,6 +229,20 @@ $_READ_KWARGS_DOC
 """
 readstat(path::AbstractString; format::Symbol=:auto, kwargs...) =
     read_data_file(path, _sniff_format(path, format); kwargs...)
+
+"""
+    read_sas7bcat(path) -> Dict{Symbol, ValueLabelDict}
+
+Read the value-label sets from a SAS `.sas7bcat` catalog file, keyed by
+format name. Usually not called directly — pass the catalog path to
+`read_sas7bdat(...; catalog=...)` to attach the labels to a data file.
+"""
+function read_sas7bcat(path::AbstractString)
+    pc = ParseContext()
+    pc.collect_values = false
+    parse_file!(pc, path, :sas7bcat)
+    return pc.meta.value_labels
+end
 
 """
     read_meta(path; format=:auto, file_encoding=nothing, handler_encoding=nothing)

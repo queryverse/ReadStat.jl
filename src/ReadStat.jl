@@ -4,8 +4,10 @@ using DataValues: DataValues, DataValueVector
 using Dates
 
 export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
-    read_dta, read_sav, read_por, read_sas7bdat, read_xport, readstat, read_meta,
-    filemetadata, varmetadata, valuelabels, missingtags
+    read_dta, read_sav, read_por, read_sas7bdat, read_xport, read_sas7bcat,
+    readstat, read_meta,
+    filemetadata, varmetadata, valuelabels, missingtags,
+    LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels
 
 public CAPI
 
@@ -39,6 +41,7 @@ const READSTAT_TYPES = (String, Int8, Int16, Int32, Float32, Float64, String)
 jltype(t::ReadStatType) = READSTAT_TYPES[Int(t) + 1]
 
 include("reader/metadata.jl")
+include("values/labeled.jl")
 include("reader/columns.jl")
 include("reader/context.jl")
 include("reader/handlers.jl")
