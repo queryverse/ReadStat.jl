@@ -10,7 +10,8 @@ export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels,
     HMS,
     ReadStatSource, ReadStatChunks, schema, colnames, coltypes, nrows, supports, chunks,
-    write_dta, write_sav, write_por, write_sas7bdat, write_xport, write_sas7bcat
+    write_dta, write_sav, write_por, write_sas7bdat, write_xport, write_sas7bcat,
+    read_txt
 
 public CAPI
 
@@ -39,6 +40,7 @@ using ReadStat_jll: libreadstat
 include("capi/enums.jl")
 include("capi/value.jl")
 include("capi/parser.jl")
+include("capi/schema.jl")
 include("capi/writer.jl")
 
 end # module CAPI

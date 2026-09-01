@@ -10,6 +10,7 @@ include("test_io.jl")
 include("test_threads.jl")
 include("test_source.jl")
 include("test_write.jl")
+include("test_schema.jl")
 include("test_deprecated.jl")
 
 @run_package_tests

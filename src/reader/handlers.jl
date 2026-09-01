@@ -97,6 +97,9 @@ function handle_value(obs_index::Cint, variable::VariablePtr, value::ReadStatVal
     try
         idx = readstat_variable_get_index_after_skipping(variable) + 1
         row = pc.row_base + Int(obs_index) + 1
+        # A negative row base emulates a row offset for parsers that ignore
+        # readstat_set_row_offset (the fixed-width text parser).
+        row < 1 && return READSTAT_HANDLER_OK
         cols = pc.cols
         code, slot = @inbounds cols.slots[idx]
 

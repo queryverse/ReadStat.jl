@@ -318,6 +318,68 @@ function read_sas7bcat(path::AbstractString)
     return pc.meta.value_labels
 end
 
+const _SCHEMA_PRODUCER = Dict(:sas_commands => :sas7bdat, :spss_commands => :sav,
+    :stata_dictionary => :dta)
+
+"""
+    read_txt(data_path, schema_path; schema_format, kwargs...) -> ReadStatTable
+
+Read a fixed-width text data file described by a schema file:
+`schema_format` selects the schema flavor — `:sas_commands` (a SAS program
+with an `INPUT` statement), `:spss_commands` (SPSS `DATA LIST` syntax), or
+`:stata_dictionary` (a Stata `.dct` file). Supports the `usecols`,
+`row_limit`, `row_offset`, `handler_encoding`, and `convert_datetime`
+keyword arguments with the same meaning as the binary readers (date/time
+formats are interpreted per the schema's producer).
+"""
+function read_txt(data_path::AbstractString, schema_path::AbstractString;
+                  schema_format::Symbol,
+                  usecols=nothing,
+                  row_limit::Union{Nothing,Integer}=nothing,
+                  row_offset::Integer=0,
+                  handler_encoding::Union{Nothing,AbstractString}=nothing,
+                  convert_datetime::Bool=true)
+    haskey(_SCHEMA_PRODUCER, schema_format) ||
+        throw(ArgumentError("schema_format must be :sas_commands, :spss_commands, or :stata_dictionary"))
+    isfile(data_path) || throw(ArgumentError("file not found: $data_path"))
+    isfile(schema_path) || throw(ArgumentError("file not found: $schema_path"))
+
+    pc = ParseContext()
+    pc.usecols = _colselector(usecols)
+    # The text parser ignores readstat_set_row_offset, so the offset is
+    # emulated by shifting the row base negative and widening the limit.
+    offset = Int(row_offset)
+    pc.row_base = -offset
+    pc.row_limit = row_limit === nothing ? -1 : Int(row_limit) + offset
+    pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
+    pc.convert_datetime = convert_datetime
+    pc.file_format = _SCHEMA_PRODUCER[schema_format]
+
+    parser = readstat_parser_init()
+    schema = SchemaPtr(C_NULL)
+    local retval
+    try
+        _set_handlers!(parser, pc)
+        out_error = Ref(READSTAT_OK)
+        schema = if schema_format === :sas_commands
+            CAPI.readstat_parse_sas_commands(parser, schema_path, pc, out_error)
+        elseif schema_format === :spss_commands
+            CAPI.readstat_parse_spss_commands(parser, schema_path, pc, out_error)
+        else
+            CAPI.readstat_parse_stata_dictionary(parser, schema_path, pc, out_error)
+        end
+        if schema == C_NULL || out_error[] != READSTAT_OK
+            error("Error parsing schema $schema_path: $(readstat_error_message(out_error[]))")
+        end
+        retval = CAPI.readstat_parse_txt(parser, data_path, schema, pc)
+    finally
+        schema == C_NULL || CAPI.readstat_schema_free(schema)
+        readstat_parser_free(parser)
+    end
+    _finish_parse(pc, retval, data_path)
+    return build_table(pc)
+end
+
 """
     read_meta(path; format=:auto, file_encoding=nothing, handler_encoding=nothing)
         -> ReadStatTable

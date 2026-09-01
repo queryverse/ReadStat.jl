@@ -1,0 +1,5 @@
+infile dictionary {
+    _column(1)  int    id    %3f  "ID number"
+    _column(4)  str8   name  %8s  "Name"
+    _column(12) double wage  %6f  "Wage"
+}
