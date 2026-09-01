@@ -8,6 +8,7 @@ include("test_labels.jl")
 include("test_datetime.jl")
 include("test_io.jl")
 include("test_threads.jl")
+include("test_source.jl")
 include("test_deprecated.jl")
 
 @run_package_tests

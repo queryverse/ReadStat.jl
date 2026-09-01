@@ -36,6 +36,9 @@ mutable struct ParseContext
     # buffers): the variable handler must not allocate columns, only apply
     # the usecols decision.
     preassigned_cols::Bool
+    # A ChunkSink (see reader/chunks.jl) when this parse streams finished
+    # chunks into a Channel instead of building one table; nothing otherwise.
+    chunk_sink::Any
     # the format being parsed (:dta, :sav, ...); selects the producer's
     # date/time format tables.
     file_format::Symbol                  # false for metadata-only parses
@@ -48,7 +51,7 @@ end
 
 ParseContext() = ParseContext(ReadStatMeta(), Symbol[], ReadStatVarMeta[], TypedColumns(),
     nothing, String[], nothing, nothing, 0, -1, nothing, nothing, true, false, false, true,
-    0, false, :none, false, 0)
+    0, false, nothing, :none, false, 0)
 
 # Rows to preallocate per column: what the file reports, minus the offset,
 # capped by the limit; 0 when unknown (buffers then grow row by row).

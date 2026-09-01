@@ -8,7 +8,8 @@ export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
     readstat, read_meta,
     filemetadata, varmetadata, valuelabels, missingtags,
     LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels,
-    HMS
+    HMS,
+    ReadStatSource, ReadStatChunks, schema, colnames, coltypes, nrows, supports, chunks
 
 public CAPI
 
@@ -51,6 +52,8 @@ include("reader/table.jl")
 include("reader/io.jl")
 include("reader/threaded.jl")
 include("reader/read.jl")
+include("reader/source.jl")
+include("reader/chunks.jl")
 include("deprecated.jl")
 
 function __init__()

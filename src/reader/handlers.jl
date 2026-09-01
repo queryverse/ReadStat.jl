@@ -139,8 +139,13 @@ function handle_value(obs_index::Cint, variable::VariablePtr, value::ReadStatVal
             miss ? setmissing!(buf, row, tag) : setvalue!(buf, row, readstat_double_value(value))
         end
         # Track the last fully delivered row so a parse stopped early (by the
-        # progress callback) can be trimmed to complete rows.
-        idx == length(cols.slots) && (pc.rows_complete = row)
+        # progress callback) can be trimmed to complete rows; in chunked
+        # streaming mode a completed chunk is flushed to its channel here.
+        if idx == length(cols.slots)
+            pc.rows_complete = row
+            sink = pc.chunk_sink
+            sink === nothing || _maybe_flush!(pc, sink, row)
+        end
         return READSTAT_HANDLER_OK
     catch e
         pc.err = (e, catch_backtrace())

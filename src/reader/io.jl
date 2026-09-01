@@ -16,18 +16,24 @@ mutable struct IOSource
     err::Union{Nothing,Tuple{Any,Any}}
 end
 
-function IOSource(io::IO)
+# Buffer a non-seekable stream in memory; the parsers seek backwards.
+function _ensure_seekable(io::IO)
     seekable = try
         seek(io, position(io))
         true
     catch
         false
     end
-    seekable || (io = IOBuffer(read(io)))
-    pos = position(io)
+    return seekable ? io : IOBuffer(read(io))
+end
+
+function IOSource(io::IO)
+    io = _ensure_seekable(io)
     seekend(io)
     size = Int64(position(io))
-    seek(io, pos)
+    # Rewind so the same stream can be parsed repeatedly (ReadStatSource
+    # reads its schema first and the data later).
+    seekstart(io)
     return IOSource(io, size, nothing)
 end
 

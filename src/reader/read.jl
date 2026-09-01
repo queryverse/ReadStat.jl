@@ -337,6 +337,8 @@ function read_meta(source::Union{AbstractString,IO}; format::Symbol=:auto,
     # row limit in effect, and read_meta must report the true count.
     pc.file_encoding = file_encoding === nothing ? nothing : String(file_encoding)
     pc.handler_encoding = handler_encoding === nothing ? nothing : String(handler_encoding)
-    parse_file!(pc, source, _sniff_format(source, format))
+    fmt = _sniff_format(source, format)
+    pc.file_format = fmt
+    parse_file!(pc, source, fmt)
     return build_table(pc)
 end
