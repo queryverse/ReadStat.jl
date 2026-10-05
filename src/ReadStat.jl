@@ -1,275 +1,81 @@
 module ReadStat
 
-using ReadStat_jll
-
-##############################################################################
-##
-## Import
-##
-##############################################################################
-
-using DataValues: DataValueVector
-import DataValues
+using DataValues: DataValues, DataValueVector
 using Dates
 
-export ReadStatDataFrame, read_dta, read_sav, read_por, read_sas7bdat, read_xport
+export ReadStatTable, ReadStatMeta, ReadStatVarMeta, ReadStatDataFrame,
+    read_dta, read_sav, read_por, read_sas7bdat, read_xport, read_sas7bcat,
+    readstat, read_meta,
+    filemetadata, varmetadata, valuelabels, missingtags,
+    LabeledValue, LabeledArray, labeled, unwrap, valuelabel, rawvalues, getvaluelabels,
+    HMS,
+    ReadStatSource, ReadStatChunks, schema, colnames, coltypes, nrows, supports, chunks,
+    write_dta, write_sav, write_por, write_sas7bdat, write_xport, write_sas7bcat,
+    read_txt
 
-##############################################################################
-##
-## Julia types that mirror C types
-##
-##############################################################################
+# The CAPI submodule and the low-level writer layer are public but not
+# exported. The `public` keyword only exists on Julia 1.11+, so it is
+# declared via eval to keep Julia 1.10 parsing this file.
+VERSION >= v"1.11.0-DEV" && eval(Meta.parse(
+    "public CAPI, Writer, WriterVariable, LabelSet, StringRef, " *
+    "add_label_set!, label!, add_variable!, add_note!, add_string_ref!, " *
+    "file_label!, timestamp!, fweight!, format_version!, table_name!, is_64bit!, " *
+    "compression!, begin_writing!, validate_metadata, validate_variable, " *
+    "begin_row!, end_row!, insert_value!, insert_missing!, insert_tagged_missing!, " *
+    "insert_string_ref!, end_writing!"))
 
-const READSTAT_TYPE_STRING      = Cint(0)
-const READSTAT_TYPE_INT8        = Cint(1)
-const READSTAT_TYPE_INT16       = Cint(2)
-const READSTAT_TYPE_INT32       = Cint(3)
-const READSTAT_TYPE_FLOAT       = Cint(4)
-const READSTAT_TYPE_DOUBLE      = Cint(5)
-const READSTAT_TYPE_STRING_REF  = Cint(6)
+"""
+    ReadStat.CAPI
 
-# Julia type for each readstat_type_t, indexed by the enum value plus one.
-# STRING_REF is a reference into a string table, so it surfaces as a String
-# just like STRING does.
+Thin wrappers around the public C API of the readstat library (readstat.h,
+v1.1.9). Function names, argument order, and semantics follow the C header
+one-to-one; C structs are handled as opaque pointers except `ReadStatValue`,
+which the C API passes by value. Higher-level functionality lives in the
+parent `ReadStat` module — reach for `CAPI` only when the high-level API does
+not expose what you need.
+"""
+module CAPI
+
+using ReadStat_jll: libreadstat
+
+include("capi/enums.jl")
+include("capi/value.jl")
+include("capi/parser.jl")
+include("capi/schema.jl")
+include("capi/writer.jl")
+
+end # module CAPI
+
+using .CAPI
+
+# Julia type corresponding to each ReadStatType, indexed by the enum value
+# plus one. STRING_REF is a reference into a string table, so it surfaces as
+# a String just like STRING does.
 const READSTAT_TYPES = (String, Int8, Int16, Int32, Float32, Float64, String)
 
-const READSTAT_ERROR_OPEN       = Cint(1)
-const READSTAT_ERROR_READ       = Cint(2)
-const READSTAT_ERROR_MALLOC     = Cint(3)
-const READSTAT_ERROR_USER_ABORT = Cint(4)
-const READSTAT_ERROR_PARSE      = Cint(5)
+jltype(t::ReadStatType) = READSTAT_TYPES[Int(t) + 1]
 
-##############################################################################
-##
-## Pure Julia types
-##
-##############################################################################
+include("reader/metadata.jl")
+include("values/labeled.jl")
+include("values/datetime.jl")
+include("reader/columns.jl")
+include("reader/context.jl")
+include("reader/handlers.jl")
+include("reader/table.jl")
+include("reader/io.jl")
+include("reader/threaded.jl")
+include("reader/read.jl")
+include("reader/source.jl")
+include("reader/chunks.jl")
+include("writer/writer.jl")
+include("writer/write.jl")
+include("deprecated.jl")
 
-struct ReadStatValue
-    union::Int64
-    readstat_types_t::Cint
-    tag::Cchar
-    @static if Sys.iswindows()
-        bits::Cuint
-    else
-        bits::UInt8
-    end
+function __init__()
+    _init_cfunctions()
+    _init_io_cfunctions()
+    _init_writer_cfunctions()
+    return nothing
 end
 
-const Value = ReadStatValue
-
-mutable struct ReadStatDataFrame
-    data::Vector{Any}
-    headers::Vector{Symbol}
-    types::Vector{DataType}
-    labels::Vector{String}
-    formats::Vector{String}
-    storagewidths::Vector{Csize_t}
-    measures::Vector{Cint}
-    alignments::Vector{Cint}
-    val_label_keys::Vector{String}
-    val_label_dict::Dict{String, Dict{Any,String}}
-    rows::Int
-    columns::Int
-    filelabel::String
-    timestamp::DateTime
-    format::Clong
-    types_as_int::Vector{Cint}
-    hasmissings::Vector{Bool}
-
-    ReadStatDataFrame() =
-        new(Any[], Symbol[], DataType[], String[], String[], Csize_t[], Cint[], Cint[],
-        String[], Dict{String, Dict{Any,String}}(), 0, 0, "", Dates.unix2datetime(0), 0, Cint[], Bool[])
-end
-
-include("C_interface.jl")
-
-##############################################################################
-##
-## Julia functions
-##
-##############################################################################
-
-function handle_metadata!(metadata::Ptr{Nothing}, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    ds.filelabel = readstat_get_file_label(metadata)
-    ds.timestamp = Dates.unix2datetime(readstat_get_modified_time(metadata))
-    ds.format = readstat_get_file_format_version(metadata)
-    ds.rows = readstat_get_row_count(metadata)
-    ds.columns = readstat_get_var_count(metadata)
-    return Cint(0)
-end
-
-get_name(variable::Ptr{Nothing}) = Symbol(readstat_variable_get_name(variable))
-
-function get_label(var::Ptr{Nothing})
-    ptr = ccall((:readstat_variable_get_label, libreadstat), Cstring, (Ptr{Nothing},), var)
-    ptr == C_NULL ? "" : unsafe_string(ptr)
-end
-
-function get_format(var::Ptr{Nothing})
-    ptr = ccall((:readstat_variable_get_format, libreadstat), Cstring, (Ptr{Nothing},), var)
-    ptr == C_NULL ? "" : unsafe_string(ptr)
-end
-
-get_type(data_type::Cint) = READSTAT_TYPES[data_type + 1]
-get_type(variable::Ptr{Nothing}) = get_type(readstat_variable_get_type(variable))
-
-get_storagewidth(variable::Ptr{Nothing}) = readstat_variable_get_storage_width(variable)
-
-get_measure(variable::Ptr{Nothing}) = readstat_variable_get_measure(variable)
-
-get_alignment(variable::Ptr{Nothing}) = readstat_variable_get_alignment(variable)
-
-function handle_variable!(var_index::Cint, variable::Ptr{Nothing},
-                         val_label::Cstring,  ds_ptr::Ptr{ReadStatDataFrame})
-    col = var_index + 1
-    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
-    missing_count = readstat_variable_get_missing_ranges_count(variable)
-
-    push!(ds.val_label_keys, (val_label == C_NULL ? "" : unsafe_string(val_label)))
-    push!(ds.headers, get_name(variable))
-    push!(ds.labels, get_label(variable))
-    push!(ds.formats, get_format(variable))
-    jtype = get_type(variable)
-    push!(ds.types, jtype)
-    push!(ds.types_as_int, readstat_variable_get_type(variable))
-    push!(ds.hasmissings, missing_count > 0)
-    # SAS XPORT sets ds.rows == -1
-    if ds.rows >= 0
-        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, ds.rows), fill(false, ds.rows)))
-    else
-        push!(ds.data, DataValueVector{jtype}(Vector{jtype}(undef, 0), fill(false, 0)))
-    end
-    push!(ds.storagewidths, get_storagewidth(variable))
-    push!(ds.measures, get_measure(variable))
-    push!(ds.alignments, get_alignment(variable))
-
-    return Cint(0)
-end
-
-get_type(val::Value) = get_type(readstat_value_type(val))
-
-Base.convert(::Type{Int8}, val::Value) = ccall((:readstat_int8_value, libreadstat), Int8, (Value,), val)
-Base.convert(::Type{Int16}, val::Value) = ccall((:readstat_int16_value, libreadstat), Int16, (Value,), val)
-Base.convert(::Type{Int32}, val::Value) = ccall((:readstat_int32_value, libreadstat), Int32, (Value,), val)
-Base.convert(::Type{Float32}, val::Value) = ccall((:readstat_float_value, libreadstat), Float32, (Value,), val)
-Base.convert(::Type{Float64}, val::Value) = ccall((:readstat_double_value, libreadstat), Float64, (Value,), val)
-function Base.convert(::Type{String}, val::Value)
-    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (Value,), val)
-    ptr ≠ C_NULL ? unsafe_string(ptr) : ""
-end
-as_native(val::Value) = convert(get_type(val), val)
-
-function handle_value!(obs_index::Cint, variable::Ptr{Nothing},
-                       value::ReadStatValue, ds_ptr::Ptr{ReadStatDataFrame})
-    ds = unsafe_pointer_to_objref(ds_ptr)::ReadStatDataFrame
-    var_index = readstat_variable_get_index(variable) + 1
-    data = ds.data
-    @inbounds type_as_int = ds.types_as_int[var_index]
-
-    ismissing = if @inbounds(ds.hasmissings[var_index])
-        readstat_value_is_missing(value, variable)
-    else
-        readstat_value_is_missing(value, C_NULL)
-    end
-
-    col = data[var_index]
-    @assert eltype(eltype(col)) == get_type(type_as_int)
-
-    if ismissing
-        if obs_index < length(col)
-            DataValues.unsafe_setindex_isna!(col, true, obs_index + 1)
-        else
-            push!(col, DataValues.NA)
-        end
-    else
-        readfield!(col, obs_index + 1, value)
-    end
-
-    return Cint(0)
-end
-
-function readfield!(dest::DataValueVector{String}, row, val::ReadStatValue)
-    ptr = ccall((:readstat_string_value, libreadstat), Cstring, (ReadStatValue,), val)
-
-    if row <= length(dest)
-        if ptr ≠ C_NULL
-            @inbounds DataValues.unsafe_setindex_value!(dest, unsafe_string(ptr), row)
-        end
-    elseif row == length(dest) + 1
-        _val = ptr ≠ C_NULL ? unsafe_string(ptr) : ""
-        DataValues.push!(dest, _val)
-    else
-        throw(ArgumentError("illegal row index: $row"))
-    end
-end
-
-for (j_type, rs_name) in (
-    (Int8,    :readstat_int8_value),
-    (Int16,   :readstat_int16_value),
-    (Int32,   :readstat_int32_value),
-    (Float32, :readstat_float_value),
-    (Float64, :readstat_double_value))
-    @eval function readfield!(dest::DataValueVector{$j_type}, row, val::ReadStatValue)
-        _val = ccall(($(QuoteNode(rs_name)), libreadstat), $j_type, (ReadStatValue,), val)
-        if row <= length(dest)
-            @inbounds DataValues.unsafe_setindex_value!(dest, _val, row)
-        elseif row == length(dest) + 1
-            DataValues.push!(dest, _val)
-        else
-            throw(ArgumentError("illegal row index: $row"))
-        end
-    end
-end
-
-function handle_value_label!(val_labels::Cstring, value::Value, label::Cstring, ds_ptr::Ptr{ReadStatDataFrame})
-    val_labels ≠ C_NULL || return Cint(0)
-    ds = unsafe_pointer_to_objref(ds_ptr)
-    dict = get!(ds.val_label_dict, unsafe_string(val_labels), Dict{Any,String}())
-    dict[as_native(value)] = unsafe_string(label)
-
-    return Cint(0)
-end
-
-function read_data_file(filename::AbstractString, filetype::Val)
-    # initialize ds
-    ds = ReadStatDataFrame()
-    # initialize parser
-    parser = Parser()
-    # parse
-    parse_data_file!(ds, parser, filename, filetype)
-    # return dataframe instead of ReadStatDataFrame
-    return ds
-end
-
-function Parser()
-    parser = ccall((:readstat_parser_init, libreadstat), Ptr{Nothing}, ())
-    meta_fxn = @cfunction(handle_metadata!, Cint, (Ptr{Nothing}, Ptr{ReadStatDataFrame}))
-    var_fxn = @cfunction(handle_variable!, Cint, (Cint, Ptr{Nothing}, Cstring,  Ptr{ReadStatDataFrame}))
-    val_fxn = @cfunction(handle_value!, Cint, (Cint, Ptr{Nothing}, ReadStatValue, Ptr{ReadStatDataFrame}))
-    label_fxn = @cfunction(handle_value_label!, Cint, (Cstring, Value, Cstring, Ptr{ReadStatDataFrame}))
-    ccall((:readstat_set_metadata_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, meta_fxn)
-    ccall((:readstat_set_variable_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, var_fxn)
-    ccall((:readstat_set_value_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, val_fxn)
-    ccall((:readstat_set_value_label_handler, libreadstat), Cint, (Ptr{Nothing}, Ptr{Nothing}), parser, label_fxn)
-    return parser
-end
-
-function error_message(retval::Integer)
-    unsafe_string(ccall((:readstat_error_message, libreadstat), Ptr{Cchar}, (Cint,), retval))
-end
-
-function parse_data_file!(ds::ReadStatDataFrame, parser::Ptr{Nothing}, filename::AbstractString, filetype::Val)
-    retval = readstat_parse(filename, filetype, parser, ds)
-    readstat_parser_free(parser)
-    retval == 0 ||  error("Error parsing $filename: $(error_message(retval))")
-end
-
-read_dta(filename::AbstractString) = read_data_file(filename, Val(:dta))
-read_sav(filename::AbstractString) = read_data_file(filename, Val(:sav))
-read_por(filename::AbstractString) = read_data_file(filename, Val(:por))
-read_sas7bdat(filename::AbstractString) = read_data_file(filename, Val(:sas7bdat))
-read_xport(filename::AbstractString) = read_data_file(filename, Val(:xport))
-
-end #module ReadStat
+end # module ReadStat
